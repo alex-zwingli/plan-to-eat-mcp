@@ -1,0 +1,39 @@
+{
+  "name": "plan-to-eat-mcp",
+  "version": "0.1.0",
+  "description": "Unofficial Plan to Eat (plantoeat.com) JSON API client and Model Context Protocol server.",
+  "main": "client.js",
+  "bin": {
+    "plan-to-eat-mcp": "./server.js"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "verify": "node verify.js",
+    "test": "node test_server.js"
+  },
+  "keywords": [
+    "plan-to-eat",
+    "plantoeat",
+    "mcp",
+    "model-context-protocol",
+    "recipes",
+    "meal-planner"
+  ],
+  "author": "Alex Zwingli",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alex-zwingli/plan-to-eat-mcp.git"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "dotenv": "^17.4.2",
+    "zod": "^4.4.1"
+  },
+  "devDependencies": {
+    "playwright": "^1.59.1"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
