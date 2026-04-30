@@ -1,35 +1,70 @@
-# plan-to-eat-mcp
+# 🍽️ plan-to-eat-mcp
 
-Unofficial JSON API client and **Model Context Protocol (MCP) server** for
-[Plan to Eat](https://www.plantoeat.com) — letting LLMs (Claude, etc.) and
-plain Node scripts read and manage your recipe book, planner, shopping list,
-and more.
+> **Stop typing recipes. Start telling them.**
+> Hand your favorite LLM the keys to your Plan to Eat recipe book, planner,
+> and shopping list — over the Model Context Protocol.
 
-Reverse-engineered from the live web app at `https://app.plantoeat.com`. Plan
-to Eat does not publish a public API; the desktop site uses these same
-endpoints internally.
+A drop-in MCP server (and standalone Node client) that gives Claude, ChatGPT,
+or any MCP-aware assistant full read/write access to your
+[Plan to Eat](https://www.plantoeat.com/ref/d7d2327524) account.
 
-> **Disclaimer.** Unofficial. Plan to Eat could change or rate-limit any of
-> this without notice. Use at your own risk.
+```
+You:  "Save the Bon Appétit miso pasta from this URL and tag it weeknight."
+LLM:  ✓ created recipe #48,872,094 — 7 ingredients, 25 min, tagged weeknight.
 
-## Features
+You:  "Plan dinner around it Tuesday and add the missing pantry items to my
+       shopping list."
+LLM:  ✓ event created 2026-05-05 / dinner / 4 servings.
+      ✓ shopping list now reflects miso, mirin, and dashi.
+```
 
-- Cookie-based session auth that survives restarts (cached to disk).
-- Auto re-login when the cached session expires.
-- Full recipe CRUD (create / read / update / delete) including ingredients,
-  directions, tags, course / cuisine / main-ingredient classification,
-  and nutrition.
-- Read access to courses, cuisines, main ingredients, tags, planner events,
-  menus, shopping list, friends, and recipe-book counts.
-- MCP server exposing all the above as tools.
-- Plain Node client (`client.js`) usable independently of MCP.
+That's it. No recipe re-typing. No copy-pasting URLs into a phone app. Just
+talk.
 
-## Requirements
+---
 
-- Node.js 18 or newer (for built-in `fetch`).
-- A Plan to Eat account.
+## ❤️ Why Plan to Eat?
 
-## Install
+If you're not already using it, [Plan to Eat](https://www.plantoeat.com/ref/d7d2327524)
+is genuinely the best meal-planning app I've ever used:
+
+- **A clip-anywhere recipe importer** that actually works on real-world food blogs.
+- **Drag-and-drop weekly planner** that automatically rolls ingredients into a
+  shopping list, with smart units and pantry deduplication.
+- **Yours forever** — your recipe book is portable, exportable, and not held
+  hostage by an algorithm.
+- **Family-friendly** — share recipes and menus with friends in-app.
+- **14-day free trial, no credit card needed.**
+
+👉 **[Sign up with my referral link](https://www.plantoeat.com/ref/d7d2327524)** —
+you get the trial, and I get a tiny thank-you. Win/win.
+
+---
+
+## ✨ What this gives you
+
+- 🤖 **MCP server out of the box** — point Claude Desktop, Claude Code, OpenClaw,
+  or any MCP-compatible host at it and start talking to your recipe book.
+- 🔐 **Auto-auth & auto-recovery** — set your credentials once, the server
+  handles login, caches the cookie session to disk, and silently re-auths
+  whenever Plan to Eat invalidates it.
+- 🧰 **14 tools, all the verbs that matter** — list / get / create / update /
+  delete recipes, browse courses & cuisines & tags, read the planner, peek at
+  the shopping list, count what's in your queue.
+- 🍳 **Real CRUD** — including ingredient lists with proper units, directions,
+  prep/cook times, nutrition, ratings, and tags.
+- 📦 **Tiny runtime** — no Playwright, no headless browser, no native modules.
+  Just `fetch`, the MCP SDK, and Zod. Boots in under a second.
+- 📚 **A library too** — `client.js` is a clean, plain-Node API client you can
+  drop into any script.
+
+> Reverse-engineered from the live web app. There's no public Plan to Eat API,
+> but the desktop site uses these same endpoints internally. Use at your own
+> risk — they could change anything at any time.
+
+---
+
+## 🚀 Quick start
 
 ```bash
 git clone https://github.com/alex-zwingli/plan-to-eat-mcp.git
@@ -37,27 +72,10 @@ cd plan-to-eat-mcp
 npm install
 ```
 
-## Use as an MCP server
+Requires Node 18+ (for built-in `fetch`) and a
+[Plan to Eat](https://www.plantoeat.com/ref/d7d2327524) account.
 
-Set credentials via environment variables and run:
-
-```bash
-PLAN_TO_EAT_USERNAME=you@example.com \
-PLAN_TO_EAT_PASSWORD=hunter2 \
-  npm start
-```
-
-Configuration variables:
-
-| Var | Required | Default | Description |
-|---|---|---|---|
-| `PLAN_TO_EAT_USERNAME` | yes | — | Plan to Eat login email |
-| `PLAN_TO_EAT_PASSWORD` | yes | — | Plan to Eat password |
-| `PLAN_TO_EAT_SESSION_FILE` | no | `~/.plan-to-eat-session.json` | Where the cookie session is cached. Set to `""` to disable disk caching. |
-
-### Wire it up to Claude Desktop / Claude Code
-
-Add this to your Claude desktop config (or `mcp.json` for Claude Code):
+### Wire it into Claude Desktop / Claude Code
 
 ```jsonc
 {
@@ -74,11 +92,31 @@ Add this to your Claude desktop config (or `mcp.json` for Claude Code):
 }
 ```
 
-### Tools exposed
+Restart your MCP host, and you're cooking.
 
-| Tool | Description |
+### Run it standalone
+
+```bash
+PLAN_TO_EAT_USERNAME=you@example.com \
+PLAN_TO_EAT_PASSWORD=hunter2 \
+  npm start
+```
+
+### Configuration
+
+| Var | Required | Default | Description |
+|---|---|---|---|
+| `PLAN_TO_EAT_USERNAME` | yes | — | Plan to Eat login email |
+| `PLAN_TO_EAT_PASSWORD` | yes | — | Plan to Eat password |
+| `PLAN_TO_EAT_SESSION_FILE` | no | `~/.plan-to-eat-session.json` | Where the cookie session is cached. Set to `""` to disable caching. |
+
+---
+
+## 🧰 Tools the server exposes
+
+| Tool | What it does |
 |---|---|
-| `list_recipes` | The whole recipe book (caps at ~500 entries). |
+| `list_recipes` | Your whole recipe book (caps at ~500 entries). |
 | `get_recipe` | One recipe with directions, ingredients, tags, prep_notes, comments. |
 | `create_recipe` | Create. Only `title` is required. |
 | `update_recipe` | Patch any subset of fields. |
@@ -90,7 +128,9 @@ Add this to your Claude desktop config (or `mcp.json` for Claude Code):
 | `list_friends` | Friends list. |
 | `get_counts` | `{ friends, queued, frozen }` from the recipe-book widget. |
 
-## Use the client as a library
+---
+
+## 📚 Use the client as a library
 
 ```js
 const { PlanToEat } = require('./client');
@@ -120,7 +160,9 @@ await pte.deleteRecipe(created.id);
 The client stashes credentials internally on first login so it can transparently
 re-authenticate if the cached cookies expire mid-session.
 
-## API reference (the parts that work)
+---
+
+## 🧪 API reference (the parts that work)
 
 All paths under `https://app.plantoeat.com`. All return JSON.
 
@@ -176,10 +218,11 @@ To delete an existing ingredient on update, include its `id` plus
 `"_destroy": true`. The server back-fills `amount_float`, `metric_amount`,
 `metric_unit`, and `similar_titles`.
 
-## Files
+---
 
-- `client.js` — the API client (no Playwright dependency at runtime, just
-  `fetch` and cookies).
+## 📁 Files
+
+- `client.js` — the API client (runtime depends only on `fetch` and cookies).
 - `server.js` — the MCP server (stdio transport).
 - `verify.js` — end-to-end smoke test of the client.
 - `test_server.js` — end-to-end smoke test of the MCP server.
@@ -188,6 +231,16 @@ Playwright was used during reverse engineering and is kept as a devDependency
 for any future API-discovery work; the runtime depends only on `fetch` and
 the MCP SDK.
 
+---
+
+## 🙏 Support Plan to Eat
+
+This whole project exists because Plan to Eat is great. If you find this
+useful, the best thing you can do is
+**[give Plan to Eat a try with my referral link](https://www.plantoeat.com/ref/d7d2327524)**.
+Free 14-day trial, no card needed.
+
 ## License
 
-MIT — see [LICENSE](./LICENSE).
+MIT — see [LICENSE](./LICENSE). Do whatever you want with it; just don't blame
+me if Plan to Eat ships a breaking change.
