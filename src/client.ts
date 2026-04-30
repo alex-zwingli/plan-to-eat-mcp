@@ -163,6 +163,14 @@ export interface ShoppingList {
 
 export interface Counts { friends: number; queued: number; frozen: number }
 
+export type PlannerSection = 'breakfast' | 'lunch' | 'dinner' | 'snacks';
+
+export interface PlannerWeek {
+  start_date: string;
+  end_date: string;
+  events: PlannerEvent[];
+}
+
 export interface Session { cookies: Record<string, string> }
 
 class HttpError extends Error {
@@ -256,6 +264,40 @@ export class PlanToEat {
       throw new HttpError(`${method} ${path} failed: ${res.status}`, res.status, parsed);
     }
     return parsed as T;
+  }
+
+  // Form-encoded POST. The /planner/* endpoints use this style: form body in,
+  // empty `text/javascript` body out (server-side state mutation only — the UI
+  // re-fetches separately).
+  private async form(
+    method: string,
+    path: string,
+    body: Record<string, string | number | boolean | undefined | null>,
+    retried = false,
+  ): Promise<void> {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(body)) {
+      if (v === undefined || v === null) continue;
+      params.set(k, String(v));
+    }
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+      'Accept': 'text/javascript',
+      'X-Requested-With': 'XMLHttpRequest',
+      'X-CSRF-Token': await this.csrfToken(),
+    };
+    const res = await this.request(method, path, { body: params.toString(), headers, asJson: false });
+    if (!res.ok) {
+      if (!retried && (res.status === 401 || res.status === 302) && this.creds) {
+        this.csrf = null;
+        this.cookies = {};
+        await this.login(this.creds.email, this.creds.password);
+        return this.form(method, path, body, true);
+      }
+      const text = await res.text().catch(() => '');
+      throw new HttpError(`${method} ${path} failed: ${res.status}`, res.status, text);
+    }
+    await res.text().catch(() => '');
   }
 
   // Translate the friendly `ingredients` field to the Rails wire name.
@@ -363,4 +405,187 @@ export class PlanToEat {
 
   /** `{ friends, queued, frozen }` */
   getCounts(): Promise<Counts> { return this.json('GET', '/recipes/counts/'); }
+
+  // ---- planner writes ----
+  //
+  // The /planner/* endpoints are Rails web controllers, not /api/v1/. They
+  // accept form-encoded bodies and return empty `text/javascript`. The UI
+  // re-fetches state separately, so we do the same: after a write that
+  // produces a new id (create, duplicate), diff against listEvents() to
+  // recover it.
+
+  /** Diff helper: returns events whose id is in `after` but not `before`. */
+  private newEventsSince(before: PlannerEvent[], after: PlannerEvent[]): PlannerEvent[] {
+    const beforeIds = new Set(before.map((e) => e.id));
+    return after.filter((e) => !beforeIds.has(e.id));
+  }
+
+  /**
+   * Add a recipe to a meal slot. Returns the newly created event (recovered
+   * by diffing against listEvents()).
+   */
+  async createPlannerRecipe(args: {
+    recipe_id: number;
+    date: string;
+    section: PlannerSection;
+    frozen_id?: number | null;
+  }): Promise<PlannerEvent | null> {
+    const before = await this.listEvents();
+    // The HAR shows two variants: `/planner/create` for a normal recipe and
+    // `/planner/create/` (trailing slash) when a frozen_id is being passed.
+    const path = args.frozen_id !== undefined ? '/planner/create/' : '/planner/create';
+    await this.form('POST', path, {
+      rid: args.recipe_id,
+      date: args.date,
+      section: args.section,
+      ...(args.frozen_id !== undefined ? { frozen_id: args.frozen_id ?? '' } : {}),
+    });
+    const after = await this.listEvents();
+    const created = this.newEventsSince(before, after);
+    return created.find((e) => e.recipe_id === args.recipe_id && e.date === args.date && e.section === args.section)
+      ?? created[0]
+      ?? null;
+  }
+
+  /** Add a freeform "ingredient" entry to a meal slot. */
+  async createPlannerIngredient(args: {
+    title: string;
+    date: string;
+    section: PlannerSection;
+  }): Promise<PlannerEvent | null> {
+    const before = await this.listEvents();
+    await this.form('POST', '/planner/create', {
+      date: args.date,
+      section: args.section,
+      eventType: 'ingredient',
+      title: args.title,
+    });
+    const after = await this.listEvents();
+    const created = this.newEventsSince(before, after);
+    return created.find((e) => e.date === args.date && e.section === args.section)
+      ?? created[0]
+      ?? null;
+  }
+
+  /** Add a freeform "note" entry to a meal slot. */
+  async createPlannerNote(args: {
+    title: string;
+    date: string;
+    section: PlannerSection;
+  }): Promise<PlannerEvent | null> {
+    const before = await this.listEvents();
+    await this.form('POST', '/planner/create', {
+      date: args.date,
+      section: args.section,
+      eventType: 'note',
+      title: args.title,
+    });
+    const after = await this.listEvents();
+    const created = this.newEventsSince(before, after);
+    return created.find((e) => e.date === args.date && e.section === args.section)
+      ?? created[0]
+      ?? null;
+  }
+
+  /** Move (or reschedule) an existing event to a new date/section. */
+  async movePlannerEvent(args: {
+    event_id: number;
+    date: string;
+    section: PlannerSection;
+  }): Promise<void> {
+    await this.form('POST', '/planner/update', {
+      eventid: args.event_id,
+      date: args.date,
+      section: args.section,
+      readonly: false,
+    });
+  }
+
+  /** Update the text of a note or ingredient entry. */
+  async updatePlannerEntryText(args: { id: number; description: string }): Promise<void> {
+    await this.form('POST', `/planner/update/${args.id}`, { description: args.description });
+  }
+
+  /** Set servings on a recipe event. */
+  async setPlannerServings(args: { event_id: number; servings: number }): Promise<void> {
+    await this.form('POST', '/planner/update_serving', {
+      event: args.event_id,
+      serving: args.servings,
+    });
+  }
+
+  /** Duplicate an event. `plan_leftover=true` marks the copy as a leftover. */
+  async duplicatePlannerEvent(args: {
+    id: number;
+    plan_leftover?: boolean;
+  }): Promise<PlannerEvent | null> {
+    const before = await this.listEvents();
+    await this.form('POST', '/planner/duplicate', {
+      id: args.id,
+      plan_leftover: args.plan_leftover ?? false,
+      readonly: false,
+    });
+    const after = await this.listEvents();
+    return this.newEventsSince(before, after)[0] ?? null;
+  }
+
+  /** Delete a planner event. */
+  async deletePlannerEvent(id: number): Promise<void> {
+    await this.form('POST', '/planner/destroy', { id, readonly: false });
+  }
+
+  /**
+   * Find planner events for a given recipe, optionally constrained to a date
+   * range. Useful for "is this already planned this week?" checks.
+   *
+   * Note: the planner UI calls `/planner/search_dates` for this, but that
+   * endpoint returns rendered HTML (a UI snippet). We get the same info — and
+   * structured — by filtering listEvents().
+   */
+  async findPlannedDates(args: {
+    recipe_id: number;
+    start_date?: string;
+    end_date?: string;
+  }): Promise<PlannerEvent[]> {
+    const events = await this.listEvents();
+    return events.filter((e) => {
+      if (e.recipe_id !== args.recipe_id) return false;
+      if (args.start_date && e.date < args.start_date) return false;
+      if (args.end_date && e.date > args.end_date) return false;
+      return true;
+    });
+  }
+
+  // ---- planner reads (convenience) ----
+
+  /**
+   * Fetch all planner events in a date range and enrich recipe events with
+   * their titles. `start_date` and `end_date` are inclusive YYYY-MM-DD strings.
+   * If `end_date` is omitted, defaults to start_date + 6 days (one week).
+   */
+  async getPlannerRange(start_date: string, end_date?: string): Promise<PlannerWeek> {
+    const end = end_date ?? addDays(start_date, 6);
+    const all = await this.listEvents();
+    const filtered = all.filter((e) => e.date >= start_date && e.date <= end);
+    const recipeIds = new Set(
+      filtered.map((e) => e.recipe_id).filter((x): x is number => x !== null && x !== undefined),
+    );
+    if (recipeIds.size > 0) {
+      const recipes = await this.listRecipes();
+      const titleById = new Map(recipes.map((r) => [r.id, r.title]));
+      for (const e of filtered) {
+        if (e.recipe_id !== null && titleById.has(e.recipe_id)) {
+          e.recipe_title = titleById.get(e.recipe_id);
+        }
+      }
+    }
+    filtered.sort((a, b) => (a.date === b.date ? a.position - b.position : a.date.localeCompare(b.date)));
+    return { start_date, end_date: end, events: filtered };
+  }
+}
+
+function addDays(date: string, days: number): string {
+  const d = new Date(date + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
 }

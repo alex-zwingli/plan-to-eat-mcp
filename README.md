@@ -48,9 +48,13 @@ you get the trial, and I get a tiny thank-you. Win/win.
 - 🔐 **Auto-auth & auto-recovery** — set your credentials once, the server
   handles login, caches the cookie session to disk, and silently re-auths
   whenever Plan to Eat invalidates it.
-- 🧰 **14 tools, all the verbs that matter** — list / get / create / update /
-  delete recipes, browse courses & cuisines & tags, read the planner, peek at
-  the shopping list, count what's in your queue.
+- 🧰 **24 tools, all the verbs that matter** — full recipe CRUD, full
+  meal-planner CRUD (add / move / duplicate / delete recipes, notes, and
+  ingredient entries), browse courses & cuisines & tags, peek at the
+  shopping list, count what's in your queue.
+- 🗓️ **Real planner control** — view a week's plan with recipe titles
+  pre-joined, schedule recipes on dates, attach prep notes, reschedule with
+  one tool call, change servings, duplicate, search for duplicates.
 - 🍳 **Real CRUD** — including ingredient lists with proper units, directions,
   prep/cook times, nutrition, ratings, and tags.
 - 📦 **Tiny runtime** — no Playwright, no headless browser, no native modules.
@@ -60,6 +64,10 @@ you get the trial, and I get a tiny thank-you. Win/win.
   comes back.
 - 📚 **A library too** — `client.ts` is a clean, plain-Node API client you can
   drop into any script.
+- 🧠 **Bundled Claude Code skill** — `.claude/skills/plan-to-eat/SKILL.md`
+  teaches any agent the common workflows and gotchas (the supper-vs-dinner
+  alias, the `description`-vs-`title` mismatch, etc.) so it doesn't have to
+  rediscover them.
 
 > Reverse-engineered from the live web app. There's no public Plan to Eat API,
 > but the desktop site uses these same endpoints internally. Use at your own
@@ -119,6 +127,10 @@ PLAN_TO_EAT_PASSWORD=hunter2 \
 
 ## 🧰 Tools the server exposes
 
+Full reference with input schemas and return shapes: **[docs/TOOLS.md](./docs/TOOLS.md)**.
+
+**Recipes**
+
 | Tool | What it does |
 |---|---|
 | `list_recipes` | Your whole recipe book (caps at ~500 entries). |
@@ -126,8 +138,33 @@ PLAN_TO_EAT_PASSWORD=hunter2 \
 | `create_recipe` | Create. Only `title` is required. |
 | `update_recipe` | Patch any subset of fields. |
 | `delete_recipe` | Delete by id. |
+
+**Planner — read**
+
+| Tool | What it does |
+|---|---|
+| `list_planner_events` | All planner entries, no date filter. |
+| `get_planner_week` | Events in a date range, with `recipe_title` pre-joined. `end_date` defaults to `start_date + 6 days`. |
+
+**Planner — write**
+
+| Tool | What it does |
+|---|---|
+| `add_planner_recipe` | Schedule a recipe on a date + section. |
+| `add_planner_ingredient` | Attach a freeform ingredient ("2 lbs ground beef") to a meal slot. |
+| `add_planner_note` | Attach a freeform note ("Defrost chicken") to a meal slot. |
+| `move_planner_event` | Reschedule any planner event to a new date/section. |
+| `update_planner_entry_text` | Edit the text of a note or ingredient entry. |
+| `set_planner_servings` | Change servings on a recipe event. |
+| `duplicate_planner_event` | Duplicate any event. Optional `plan_leftover`. |
+| `delete_planner_event` | Delete by id. |
+| `find_planned_dates` | Find planner events for a recipe in a date range. Useful for duplicate checks. |
+
+**Lookup tables & extras**
+
+| Tool | What it does |
+|---|---|
 | `list_courses` / `list_cuisines` / `list_main_ingredients` / `list_tags` | Lookup tables. |
-| `list_planner_events` | Calendar entries `{ date, recipe_id, section, servings, ... }`. |
 | `list_menus` | Saved menus. |
 | `get_shopping_list` | Current shopping list with sync metadata. |
 | `list_friends` | Friends list. |
@@ -169,7 +206,9 @@ re-authenticate if the cached cookies expire mid-session.
 
 ## 🧪 API reference (the parts that work)
 
-All paths under `https://app.plantoeat.com`. All return JSON.
+All paths under `https://app.plantoeat.com`.
+
+### JSON endpoints (`/api/v1/*`)
 
 | Method | Path | Notes |
 |---|---|---|
@@ -179,11 +218,28 @@ All paths under `https://app.plantoeat.com`. All return JSON.
 | PUT | `/api/v1/recipes/:id` | Update. Same body shape. |
 | DELETE | `/api/v1/recipes/:id` | Delete. Returns the deleted recipe. |
 | GET | `/api/v1/courses`, `/cuisines`, `/main_ingredients`, `/tags` | Lookup tables. |
-| GET | `/api/v1/events` | Planner entries (calendar). |
+| GET | `/api/v1/events` | Planner entries (calendar). Returns the entire calendar — filter by date client-side. |
 | GET | `/api/v1/menus` | Saved menus. |
 | GET | `/api/v1/shopping_list` | Shopping list with sync timestamp. |
 | GET | `/api/v1/friends` | Friends. |
 | GET | `/recipes/counts/` | `{ friends, queued, frozen }`. (Note: not under `/api/v1`.) |
+
+### Planner write endpoints (`/planner/*`)
+
+A different style: form-encoded bodies, `text/javascript` (empty) responses. The server mutates state and the UI re-fetches separately. Required headers: `X-CSRF-Token`, `X-Requested-With: XMLHttpRequest`, `Accept: text/javascript`. Because the response body is empty, the client recovers any new event ID by diffing `/api/v1/events` before and after.
+
+| Method | Path | Body |
+|---|---|---|
+| POST | `/planner/create` | `rid=<recipeId>&date=YYYY-MM-DD&section=...` (recipe), or `date=...&section=...&eventType=note\|ingredient&title=<text>` |
+| POST | `/planner/create/` | `rid=<id>&frozen_id=&date=...&section=...` (frozen-recipe variant — note the trailing slash) |
+| POST | `/planner/update` | `eventid=<id>&date=...&section=...&readonly=false` (move/reschedule) |
+| POST | `/planner/update/<id>` | `description=<text>` (edit note/ingredient text) |
+| POST | `/planner/update_serving` | `event=<id>&serving=<n>` |
+| POST | `/planner/duplicate` | `id=<id>&plan_leftover=true\|false&readonly=false` |
+| POST | `/planner/destroy` | `id=<id>&readonly=false` |
+| GET | `/planner/search_dates` | Returns rendered HTML, **not JSON** — not used by the client. We filter `/api/v1/events` instead. |
+
+`section` values are `breakfast`, `lunch`, `dinner`, `snacks`. Note that the server may normalize `dinner` → `supper` based on the user's per-account preference; reads will reflect the canonical name.
 
 ### Authentication
 
@@ -229,8 +285,12 @@ To delete an existing ingredient on update, include its `id` plus
 
 - `src/client.ts` — the API client (runtime depends only on `fetch` and cookies).
 - `src/server.ts` — the MCP server (stdio transport).
-- `src/verify.ts` — end-to-end smoke test of the client.
+- `src/verify.ts` — end-to-end smoke test of the client (recipes).
+- `src/planner_verify.ts` — end-to-end smoke test of the planner write endpoints.
 - `src/test_server.ts` — end-to-end smoke test of the MCP server.
+- `docs/TOOLS.md` — per-tool reference with input/output shapes.
+- `.claude/skills/plan-to-eat/SKILL.md` — Claude Code skill that teaches an
+  agent the common workflows and gotchas.
 - `dist/` — emitted by `npm run build`. The MCP host runs `dist/server.js`.
 
 Playwright was used during reverse engineering and is kept as a devDependency
@@ -244,7 +304,8 @@ the MCP SDK.
 | `npm run build` | Compile `src/**/*.ts` to `dist/`. |
 | `npm run watch` | Same, in watch mode. |
 | `npm start` | Run the compiled MCP server (`dist/server.js`). |
-| `npm run verify` | Smoke-test the client end-to-end against your account. |
+| `npm run verify` | Smoke-test the client end-to-end against your account (recipes). |
+| `npm run verify:planner` | Smoke-test the planner write endpoints (creates + cleans up test events on a date 6 months out). |
 | `npm test` | Smoke-test the MCP server end-to-end (spawns it and calls tools). |
 | `npm run clean` | Remove `dist/`. |
 

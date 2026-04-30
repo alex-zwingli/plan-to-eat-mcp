@@ -1,6 +1,6 @@
 {
   "name": "plan-to-eat-mcp",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Unofficial Plan to Eat (plantoeat.com) JSON API client and Model Context Protocol server.",
   "main": "dist/client.js",
   "types": "dist/client.d.ts",
@@ -17,6 +17,7 @@
     "watch": "tsc --watch",
     "start": "node dist/server.js",
     "verify": "node dist/verify.js",
+    "verify:planner": "node dist/planner_verify.js",
     "test": "node dist/test_server.js",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\""
   },
