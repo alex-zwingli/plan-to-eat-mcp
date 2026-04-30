@@ -55,7 +55,10 @@ you get the trial, and I get a tiny thank-you. Win/win.
   prep/cook times, nutrition, ratings, and tags.
 - 📦 **Tiny runtime** — no Playwright, no headless browser, no native modules.
   Just `fetch`, the MCP SDK, and Zod. Boots in under a second.
-- 📚 **A library too** — `client.js` is a clean, plain-Node API client you can
+- 🦺 **100% TypeScript** — fully typed `Recipe`, `Ingredient`, `PlannerEvent`
+  shapes plus a generic `_json<T>` so your tools never have to guess what
+  comes back.
+- 📚 **A library too** — `client.ts` is a clean, plain-Node API client you can
   drop into any script.
 
 > Reverse-engineered from the live web app. There's no public Plan to Eat API,
@@ -70,10 +73,12 @@ you get the trial, and I get a tiny thank-you. Win/win.
 git clone https://github.com/alex-zwingli/plan-to-eat-mcp.git
 cd plan-to-eat-mcp
 npm install
+npm run build
 ```
 
 Requires Node 18+ (for built-in `fetch`) and a
 [Plan to Eat](https://www.plantoeat.com/ref/d7d2327524) account.
+The build emits CommonJS to `dist/`.
 
 ### Wire it into Claude Desktop / Claude Code
 
@@ -82,7 +87,7 @@ Requires Node 18+ (for built-in `fetch`) and a
   "mcpServers": {
     "plan-to-eat": {
       "command": "node",
-      "args": ["/absolute/path/to/plan-to-eat-mcp/server.js"],
+      "args": ["/absolute/path/to/plan-to-eat-mcp/dist/server.js"],
       "env": {
         "PLAN_TO_EAT_USERNAME": "you@example.com",
         "PLAN_TO_EAT_PASSWORD": "hunter2"
@@ -132,15 +137,15 @@ PLAN_TO_EAT_PASSWORD=hunter2 \
 
 ## 📚 Use the client as a library
 
-```js
-const { PlanToEat } = require('./client');
-const pte = new PlanToEat();
+```ts
+import { PlanToEat, type Recipe } from 'plan-to-eat-mcp';
 
-await pte.login(process.env.PLAN_TO_EAT_USERNAME, process.env.PLAN_TO_EAT_PASSWORD);
+const pte = new PlanToEat();
+await pte.login(process.env.PLAN_TO_EAT_USERNAME!, process.env.PLAN_TO_EAT_PASSWORD!);
 // Or restore: pte.importSession(JSON.parse(fs.readFileSync('session.json', 'utf8')));
 
 const recipes = await pte.listRecipes();
-const detail  = await pte.getRecipe(recipes[0].id);
+const detail: Recipe = await pte.getRecipe(recipes[0].id);
 
 const created = await pte.createRecipe({
   title: 'Grilled cheese',
@@ -222,14 +227,26 @@ To delete an existing ingredient on update, include its `id` plus
 
 ## 📁 Files
 
-- `client.js` — the API client (runtime depends only on `fetch` and cookies).
-- `server.js` — the MCP server (stdio transport).
-- `verify.js` — end-to-end smoke test of the client.
-- `test_server.js` — end-to-end smoke test of the MCP server.
+- `src/client.ts` — the API client (runtime depends only on `fetch` and cookies).
+- `src/server.ts` — the MCP server (stdio transport).
+- `src/verify.ts` — end-to-end smoke test of the client.
+- `src/test_server.ts` — end-to-end smoke test of the MCP server.
+- `dist/` — emitted by `npm run build`. The MCP host runs `dist/server.js`.
 
 Playwright was used during reverse engineering and is kept as a devDependency
 for any future API-discovery work; the runtime depends only on `fetch` and
 the MCP SDK.
+
+### Scripts
+
+| Command | What it does |
+|---|---|
+| `npm run build` | Compile `src/**/*.ts` to `dist/`. |
+| `npm run watch` | Same, in watch mode. |
+| `npm start` | Run the compiled MCP server (`dist/server.js`). |
+| `npm run verify` | Smoke-test the client end-to-end against your account. |
+| `npm test` | Smoke-test the MCP server end-to-end (spawns it and calls tools). |
+| `npm run clean` | Remove `dist/`. |
 
 ---
 

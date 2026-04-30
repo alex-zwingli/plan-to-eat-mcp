@@ -1,15 +1,24 @@
 {
   "name": "plan-to-eat-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Unofficial Plan to Eat (plantoeat.com) JSON API client and Model Context Protocol server.",
-  "main": "client.js",
+  "main": "dist/client.js",
+  "types": "dist/client.d.ts",
   "bin": {
-    "plan-to-eat-mcp": "./server.js"
+    "plan-to-eat-mcp": "./dist/server.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "start": "node server.js",
-    "verify": "node verify.js",
-    "test": "node test_server.js"
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "start": "node dist/server.js",
+    "verify": "node dist/verify.js",
+    "test": "node dist/test_server.js",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\""
   },
   "keywords": [
     "plan-to-eat",
@@ -31,7 +40,9 @@
     "zod": "^4.4.1"
   },
   "devDependencies": {
-    "playwright": "^1.59.1"
+    "@types/node": "^25.6.0",
+    "playwright": "^1.59.1",
+    "typescript": "^6.0.3"
   },
   "engines": {
     "node": ">=18"
