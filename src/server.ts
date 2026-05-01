@@ -248,6 +248,56 @@ server.registerTool('find_planned_dates', {
 }, tool((args: { recipe_id: number; start_date?: string; end_date?: string }) =>
   pte.findPlannedDates(args)));
 
+server.registerTool('reorder_planner_events', {
+  description: 'Reorder events within a section. Pass `event_ids` in the desired order. All events should belong to the same date+section for the reorder to be meaningful.',
+  inputSchema: { event_ids: z.array(z.number().int()).min(1) },
+}, tool(async ({ event_ids }: { event_ids: number[] }) => {
+  await pte.reorderPlannerEvents(event_ids);
+  return { ok: true };
+}));
+
+server.registerTool('add_leftover_meal', {
+  description: 'Schedule a leftover meal derived from a previously planned recipe event. Duplicates the source event with `plan_leftover=true` and optionally moves the duplicate to a different date/section. Returns the new event.',
+  inputSchema: {
+    source_event_id: z.number().int(),
+    date: dateSchema.optional().describe('If omitted, leftover lands on the same date as the source event.'),
+    section: sectionSchema.optional().describe('If omitted, leftover lands in the same section as the source event.'),
+  },
+}, tool((args: { source_event_id: number; date?: string; section?: PlannerSection }) =>
+  pte.addLeftoverMeal(args)));
+
+server.registerTool('update_planner_options', {
+  description: 'Update planner display/behaviour preferences (time_zone, planner_start_day, calendar_settings.show_calories, etc). Use Rails-style nested keys like `user[time_zone]` or `calendar_settings[show_calories]`. Rarely needed.',
+  inputSchema: { options: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])) },
+}, tool(async ({ options }: { options: Record<string, string | number | boolean> }) => {
+  await pte.updatePlannerOptions(options);
+  return { ok: true };
+}));
+
+server.registerTool('list_frozen_recipes', {
+  description: 'List what\'s in the freezer. Each entry: { id, recipe_id, count, servings, frozen_on }. By default only returns active entries (count > 0); pass include_consumed=true to also see history (the API soft-deletes by zeroing the count rather than removing the row).',
+  inputSchema: { include_consumed: z.boolean().optional() },
+}, tool(({ include_consumed }: { include_consumed?: boolean }) =>
+  pte.listFrozenRecipes({ include_consumed })));
+
+server.registerTool('freeze_recipe_portions', {
+  description: 'Mark N portions of a previously cooked recipe as frozen. `event_id` ties the frozen entry back to the planner event the portions came from.',
+  inputSchema: {
+    recipe_id: z.number().int(),
+    event_id: z.number().int().describe('The planner event the portions came from (typically the recipe event you just cooked).'),
+    count: z.number().int().nonnegative().describe('Number of frozen portions / containers.'),
+    servings: z.number().positive().describe('Servings per portion (e.g. 1.0 means each container = 1 serving).'),
+  },
+}, tool(async (args: { recipe_id: number; event_id: number; count: number; servings: number }) => {
+  await pte.freezeRecipePortions(args);
+  return { ok: true };
+}));
+
+server.registerTool('delete_frozen_recipe', {
+  description: 'Mark a frozen entry as consumed (the portion was eaten or thrown out). Soft-delete: API sets count to 0; the entry persists as history.',
+  inputSchema: { id: z.number().int() },
+}, tool(({ id }: { id: number }) => pte.deleteFrozenRecipe(id)));
+
 server.registerTool('list_menus', {
   description: 'List saved menus.',
   inputSchema: {},

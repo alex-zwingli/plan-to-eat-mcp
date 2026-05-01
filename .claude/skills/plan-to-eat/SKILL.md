@@ -1,6 +1,6 @@
 ---
 name: plan-to-eat
-description: Use when the user wants to interact with Plan to Eat (plantoeat.com) — viewing or updating their meal plan, managing recipes, scheduling notes/ingredients on the planner, or checking the shopping list. Triggers on phrases like "what's on my meal plan", "plan X for Wednesday dinner", "add a note to Tuesday breakfast", "move dinner to Friday", "what's in my shopping list".
+description: Use when the user wants to interact with Plan to Eat (plantoeat.com) — viewing or updating their meal plan, managing recipes, scheduling notes/ingredients/leftovers on the planner, tracking the freezer, or checking the shopping list. Triggers on phrases like "what's on my meal plan", "plan X for Wednesday dinner", "add a note to Tuesday breakfast", "move dinner to Friday", "freeze leftovers", "what's in the freezer", "what's in my shopping list".
 ---
 
 # plan-to-eat MCP
@@ -22,6 +22,8 @@ If the user references Plan to Eat but no `plan-to-eat__*` tools are available, 
 - `kind` is `recipe`, `note`, or `ingredient`
 - `section` is `breakfast`, `lunch`, `dinner`, or `snacks`
 - `date` is `YYYY-MM-DD`
+
+**Frozen recipe** — a freezer entry tracking N portions of a previously cooked recipe. Shape: `{ id, recipe_id, count, servings, frozen_on }`. `count` is portions remaining; `servings` is per-portion size. The API soft-deletes by zeroing `count` rather than removing the row.
 
 **A "week"** is whatever 7-day window the user means. Use `get_planner_week` with a `start_date`; `end_date` defaults to `start_date + 6 days`. If the user says "this week" without specifying a start day, ask or pick today.
 
@@ -75,6 +77,37 @@ move_planner_event({ event_id: <new id>, date: "<Fri>", section: "dinner" })
 ```
 Set `plan_leftover: true` if the user explicitly says "as a leftover".
 
+### "Plan Tuesday's lasagna as leftovers on Thursday"
+Use the leftover convenience tool — it does the duplicate + move in one call:
+```
+add_leftover_meal({ source_event_id: <Tuesday lasagna event id>, date: "<Thu>", section: "dinner" })
+```
+Omit `date`/`section` to leave the leftover on the same day/slot as the source.
+
+### "Reorder breakfast: pancakes first, then bacon"
+```
+reorder_planner_events({ event_ids: [<pancakes id>, <bacon id>] })
+```
+All ids should be in the same date+section.
+
+### "Freeze 3 portions of last night's chili"
+1. Find the planner event id for the chili (`get_planner_week`).
+2. `freeze_recipe_portions({ recipe_id, event_id, count: 3, servings: 1.0 })` — `event_id` is the planner event the portions came from.
+3. Confirm with `list_frozen_recipes` to surface the new entry id.
+
+### "What's in the freezer?"
+```
+list_frozen_recipes()  // active only (count > 0)
+list_frozen_recipes({ include_consumed: true })  // history too
+```
+Recipe titles aren't pre-joined — call `get_recipe` per `recipe_id` if the user wants names.
+
+### "We ate the freezer chili"
+```
+delete_frozen_recipe({ id: <frozen entry id> })
+```
+This is a soft-delete: API sets `count` to 0; the entry stays in history.
+
 ### "Remove that from the plan"
 ```
 delete_planner_event({ id })
@@ -90,4 +123,4 @@ delete_planner_event({ id })
 
 ## Full tool reference
 
-See [docs/TOOLS.md](../../../docs/TOOLS.md) for argument schemas, return shapes, and notes on each of the 24 tools.
+See [docs/TOOLS.md](../../../docs/TOOLS.md) for argument schemas, return shapes, and notes on each of the 30 tools.

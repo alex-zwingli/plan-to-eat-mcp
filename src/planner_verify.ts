@@ -128,6 +128,65 @@ async function main(): Promise<void> {
     } else {
       console.log('duplicate returned null (no diff detected)');
     }
+
+    console.log('\n--- add leftover meal (duplicate of recipe event, moved to next day) ---');
+    const leftover = await pte.addLeftoverMeal({
+      source_event_id: recipeEvent.id,
+      date: testDate2,
+      section: 'lunch',
+    });
+    if (!leftover) throw new Error('addLeftoverMeal returned null');
+    created.push(leftover.id);
+    console.log('leftover id/date/section:', leftover.id, leftover.date, leftover.section);
+    if (leftover.date !== testDate2) {
+      throw new Error(`Leftover did not move to ${testDate2}, got ${leftover.date}`);
+    }
+
+    console.log('\n--- create second recipe event in same slot (for reorder test) ---');
+    const recipeEvent2 = await pte.createPlannerRecipe({
+      recipe_id: owned.id,
+      date: testDate,
+      section: 'breakfast',
+    });
+    if (!recipeEvent2) throw new Error('second createPlannerRecipe returned null');
+    created.push(recipeEvent2.id);
+    console.log('second recipe event id:', recipeEvent2.id);
+
+    console.log('\n--- reorder events in breakfast slot ---');
+    await pte.reorderPlannerEvents([recipeEvent2.id, recipeEvent.id]);
+    console.log('  ok (no error means accepted)');
+
+    console.log('\n--- list frozen recipes (baseline) ---');
+    const frozenBefore = await pte.listFrozenRecipes();
+    console.log('frozen entries before:', frozenBefore.length);
+
+    console.log('\n--- freeze 2 portions from the recipe event ---');
+    await pte.freezeRecipePortions({
+      recipe_id: owned.id,
+      event_id: recipeEvent.id,
+      count: 2,
+      servings: 1.5,
+    });
+    const frozenAfter = await pte.listFrozenRecipes();
+    const newFrozen = frozenAfter.filter((f) => !frozenBefore.some((b) => b.id === f.id));
+    if (newFrozen.length !== 1) {
+      throw new Error(`Expected 1 new frozen entry, found ${newFrozen.length}`);
+    }
+    const frozenId = newFrozen[0].id;
+    console.log('new frozen id/recipe_id/count/servings:', frozenId, newFrozen[0].recipe_id, newFrozen[0].count, newFrozen[0].servings);
+    if (newFrozen[0].count !== 2) throw new Error(`Expected count=2, got ${newFrozen[0].count}`);
+
+    console.log('\n--- delete (soft) frozen entry ---');
+    await pte.deleteFrozenRecipe(frozenId);
+    const activeAfter = await pte.listFrozenRecipes();
+    if (activeAfter.some((f) => f.id === frozenId)) {
+      throw new Error('Frozen entry still active after delete');
+    }
+    const allAfter = await pte.listFrozenRecipes({ include_consumed: true });
+    const consumed = allAfter.find((f) => f.id === frozenId);
+    if (!consumed) throw new Error('Frozen entry vanished entirely (expected count=0 row)');
+    if (consumed.count !== 0) throw new Error(`Expected count=0 after delete, got ${consumed.count}`);
+    console.log('  soft-deleted; entry persists in history with count=0; active freezer back to', activeAfter.length);
   } finally {
     console.log('\n--- cleanup ---');
     for (const id of created) {
