@@ -171,6 +171,15 @@ export interface PlannerWeek {
   events: PlannerEvent[];
 }
 
+export interface FrozenRecipe {
+  id: number;
+  recipe_id: number;
+  count: number;
+  /** Server returns servings as a string (e.g. "6.0"). */
+  servings: string;
+  frozen_on: string;
+}
+
 export interface Session { cookies: Record<string, string> }
 
 class HttpError extends Error {
@@ -554,6 +563,89 @@ export class PlanToEat {
       if (args.end_date && e.date > args.end_date) return false;
       return true;
     });
+  }
+
+  /** Reorder events within a section. Pass the event ids in the desired order. */
+  async reorderPlannerEvents(event_ids: number[]): Promise<void> {
+    const ids = event_ids.map((id) => `e${id}`).join(',');
+    await this.form('POST', '/planner/update_order', { ids });
+  }
+
+  /**
+   * Convenience: schedule a leftover meal derived from a previously planned
+   * recipe event. Internally duplicates the source event with
+   * `plan_leftover=true` and (optionally) moves the duplicate to a new date /
+   * section. Returns the new event.
+   */
+  async addLeftoverMeal(args: {
+    source_event_id: number;
+    date?: string;
+    section?: PlannerSection;
+  }): Promise<PlannerEvent | null> {
+    const dup = await this.duplicatePlannerEvent({ id: args.source_event_id, plan_leftover: true });
+    if (!dup) return null;
+    const needsMove = (args.date && args.date !== dup.date) || (args.section && args.section !== dup.section);
+    if (needsMove) {
+      await this.movePlannerEvent({
+        event_id: dup.id,
+        date: args.date ?? dup.date,
+        section: (args.section ?? dup.section) as PlannerSection,
+      });
+      const after = await this.listEvents();
+      return after.find((e) => e.id === dup.id) ?? dup;
+    }
+    return dup;
+  }
+
+  /**
+   * Update planner display / behaviour options. Pass arbitrary form keys —
+   * the server expects nested Rails-style keys like `user[time_zone]` or
+   * `calendar_settings[show_calories]`. The HAR shows the full UI panel
+   * sending all settings on every save.
+   */
+  async updatePlannerOptions(options: Record<string, string | number | boolean>): Promise<void> {
+    await this.form('POST', '/planner/update_planner_options', options);
+  }
+
+  // ---- frozen recipes ("freezer") ----
+
+  /**
+   * List the user's freezer. By default returns only entries with `count > 0`
+   * (i.e. what's actually in the freezer right now). Pass `include_consumed:
+   * true` to also see history — the API soft-deletes entries by setting
+   * `count` to 0 rather than removing them.
+   */
+  async listFrozenRecipes(opts: { include_consumed?: boolean } = {}): Promise<FrozenRecipe[]> {
+    const all = await this.json<FrozenRecipe[]>('GET', '/api/v1/frozen_recipes');
+    return opts.include_consumed ? all : all.filter((f) => f.count > 0);
+  }
+
+  /**
+   * Mark portions of a previously cooked recipe as frozen. `event_id` ties
+   * the frozen entry back to the planner event the portions came from.
+   */
+  async freezeRecipePortions(args: {
+    recipe_id: number;
+    event_id: number;
+    count: number;
+    servings: number;
+  }): Promise<void> {
+    await this.form('POST', '/frozen_recipes', {
+      id: args.recipe_id,
+      eid: args.event_id,
+      count: args.count,
+      servings: args.servings,
+    });
+  }
+
+  /**
+   * Mark a frozen entry as consumed (soft-delete: API sets `count` to 0,
+   * the entry persists as history). After this call, the entry will no
+   * longer appear in `listFrozenRecipes()` unless `include_consumed: true`
+   * is passed.
+   */
+  deleteFrozenRecipe(id: number): Promise<FrozenRecipe> {
+    return this.json('DELETE', `/api/v1/frozen_recipes/${id}`);
   }
 
   // ---- planner reads (convenience) ----

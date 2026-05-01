@@ -48,13 +48,18 @@ you get the trial, and I get a tiny thank-you. Win/win.
 - 🔐 **Auto-auth & auto-recovery** — set your credentials once, the server
   handles login, caches the cookie session to disk, and silently re-auths
   whenever Plan to Eat invalidates it.
-- 🧰 **24 tools, all the verbs that matter** — full recipe CRUD, full
+- 🧰 **30 tools, all the verbs that matter** — full recipe CRUD, full
   meal-planner CRUD (add / move / duplicate / delete recipes, notes, and
-  ingredient entries), browse courses & cuisines & tags, peek at the
+  ingredient entries), reorder events in a slot, leftovers as a first-class
+  workflow, freezer tracking, browse courses & cuisines & tags, peek at the
   shopping list, count what's in your queue.
 - 🗓️ **Real planner control** — view a week's plan with recipe titles
   pre-joined, schedule recipes on dates, attach prep notes, reschedule with
-  one tool call, change servings, duplicate, search for duplicates.
+  one tool call, change servings, duplicate, search for duplicates, reorder
+  same-slot events.
+- ❄️ **Freezer tracking** — after cooking, mark N portions as frozen with
+  `freeze_recipe_portions`; check what's stashed with `list_frozen_recipes`;
+  consume entries when you eat them (soft-delete, history preserved).
 - 🍳 **Real CRUD** — including ingredient lists with proper units, directions,
   prep/cook times, nutrition, ratings, and tags.
 - 📦 **Tiny runtime** — no Playwright, no headless browser, no native modules.
@@ -153,12 +158,22 @@ Full reference with input schemas and return shapes: **[docs/TOOLS.md](./docs/TO
 | `add_planner_recipe` | Schedule a recipe on a date + section. |
 | `add_planner_ingredient` | Attach a freeform ingredient ("2 lbs ground beef") to a meal slot. |
 | `add_planner_note` | Attach a freeform note ("Defrost chicken") to a meal slot. |
+| `add_leftover_meal` | Schedule a leftover from a previously planned recipe event (duplicate with `plan_leftover` + optional move). |
 | `move_planner_event` | Reschedule any planner event to a new date/section. |
+| `reorder_planner_events` | Reorder events within a section (pass ids in desired order). |
 | `update_planner_entry_text` | Edit the text of a note or ingredient entry. |
 | `set_planner_servings` | Change servings on a recipe event. |
 | `duplicate_planner_event` | Duplicate any event. Optional `plan_leftover`. |
 | `delete_planner_event` | Delete by id. |
 | `find_planned_dates` | Find planner events for a recipe in a date range. Useful for duplicate checks. |
+
+**Freezer**
+
+| Tool | What it does |
+|---|---|
+| `list_frozen_recipes` | What's currently in the freezer. `{include_consumed: true}` to also see history. |
+| `freeze_recipe_portions` | Mark N portions of a cooked recipe as frozen, tied to the planner event they came from. |
+| `delete_frozen_recipe` | Mark a frozen entry as consumed (soft-delete: API zeroes count, row persists). |
 
 **Lookup tables & extras**
 
@@ -169,6 +184,7 @@ Full reference with input schemas and return shapes: **[docs/TOOLS.md](./docs/TO
 | `get_shopping_list` | Current shopping list with sync metadata. |
 | `list_friends` | Friends list. |
 | `get_counts` | `{ friends, queued, frozen }` from the recipe-book widget. |
+| `update_planner_options` | Set planner display preferences (timezone, start day, nutrition columns). Rarely needed. |
 
 ---
 
@@ -222,6 +238,8 @@ All paths under `https://app.plantoeat.com`.
 | GET | `/api/v1/menus` | Saved menus. |
 | GET | `/api/v1/shopping_list` | Shopping list with sync timestamp. |
 | GET | `/api/v1/friends` | Friends. |
+| GET | `/api/v1/frozen_recipes` | Freezer: `[{id, recipe_id, count, servings, frozen_on}]`. |
+| DELETE | `/api/v1/frozen_recipes/:id` | Soft-delete (sets `count: 0`; row persists). Returns the updated row. |
 | GET | `/recipes/counts/` | `{ friends, queued, frozen }`. (Note: not under `/api/v1`.) |
 
 ### Planner write endpoints (`/planner/*`)
@@ -236,7 +254,10 @@ A different style: form-encoded bodies, `text/javascript` (empty) responses. The
 | POST | `/planner/update/<id>` | `description=<text>` (edit note/ingredient text) |
 | POST | `/planner/update_serving` | `event=<id>&serving=<n>` |
 | POST | `/planner/duplicate` | `id=<id>&plan_leftover=true\|false&readonly=false` |
+| POST | `/planner/update_order` | `ids=e<id1>,e<id2>` — reorder events in a section |
 | POST | `/planner/destroy` | `id=<id>&readonly=false` |
+| POST | `/planner/update_planner_options` | Nested Rails keys: `user[time_zone]=...&calendar_settings[show_calories]=1&...` |
+| POST | `/frozen_recipes` | `id=<recipe_id>&eid=<event_id>&count=<n>&servings=<per-portion>` — freeze N portions |
 | GET | `/planner/search_dates` | Returns rendered HTML, **not JSON** — not used by the client. We filter `/api/v1/events` instead. |
 
 `section` values are `breakfast`, `lunch`, `dinner`, `snacks`. Note that the server may normalize `dinner` → `supper` based on the user's per-account preference; reads will reflect the canonical name.

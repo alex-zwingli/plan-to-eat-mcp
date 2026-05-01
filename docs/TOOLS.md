@@ -5,8 +5,9 @@ Every tool exposed by the `plan-to-eat-mcp` server. Inputs use the JSON-Schema s
 - [Recipes](#recipes) — list, get, create, update, delete
 - [Lookup tables](#lookup-tables) — courses, cuisines, main ingredients, tags
 - [Planner: read](#planner-read) — view events, get a week's plan
-- [Planner: write](#planner-write) — add/move/edit/delete planner events
-- [Other](#other) — shopping list, friends, menus, counts
+- [Planner: write](#planner-write) — add/move/edit/delete planner events, reorder, leftovers
+- [Freezer](#freezer) — list / add / consume frozen portions
+- [Other](#other) — shopping list, friends, menus, counts, planner options
 
 ---
 
@@ -152,6 +153,46 @@ Find planner events for a given recipe, optionally constrained to a date range.
 - **Returns**: `PlannerEvent[]`
 - **Notes**: Useful for "is this already planned this week?" checks before scheduling. Implemented by filtering `list_planner_events` client-side; the upstream `/planner/search_dates` endpoint returns rendered HTML and isn't usable as a data API.
 
+### `reorder_planner_events`
+Reorder events within a section.
+
+- **Input**: `{ event_ids: number[] }` — ids in the desired order
+- **Returns**: `{ ok: true }`
+- **Notes**: All ids should belong to the same date+section for the reorder to be meaningful. Wire format: `ids=e<id1>,e<id2>` to `POST /planner/update_order`.
+
+### `add_leftover_meal`
+Schedule a leftover meal derived from a previously planned recipe event.
+
+- **Input**: `{ source_event_id, date?, section? }` — `date`/`section` default to the source event's date/section
+- **Returns**: the new `PlannerEvent`
+- **Notes**: Convenience wrapper. Internally `duplicate_planner_event` with `plan_leftover=true`, then `move_planner_event` if a different `date`/`section` was requested.
+
+---
+
+## Freezer
+
+The "freezer" is Plan to Eat's tracking of cooked-and-frozen portions: after cooking a planned meal, you can mark N portions as frozen for later use. Each entry is `{ id, recipe_id, count, servings, frozen_on }` — `count` is portions remaining, `servings` is per-portion size. The API soft-deletes by setting `count: 0` rather than removing rows.
+
+### `list_frozen_recipes`
+What's currently in the freezer.
+
+- **Input**: `{ include_consumed?: boolean }` — defaults to `false` (only `count > 0`)
+- **Returns**: `FrozenRecipe[]`
+- **Notes**: With `include_consumed: true` you also see history (entries that were consumed/thrown out — `count = 0`).
+
+### `freeze_recipe_portions`
+Mark N portions of a previously cooked recipe as frozen.
+
+- **Input**: `{ recipe_id, event_id, count, servings }` — `event_id` is the planner event the portions came from (typically the recipe event you just cooked); `servings` is per-portion (e.g. `1.0` means each container = 1 serving).
+- **Returns**: `{ ok: true }`. Use `list_frozen_recipes` afterwards to recover the new id.
+
+### `delete_frozen_recipe`
+Mark a frozen entry as consumed (eaten or thrown out).
+
+- **Input**: `{ id }`
+- **Returns**: the entry as the API stored it (with `count: 0`).
+- **Notes**: Soft-delete — the entry persists as history. After this call, the entry no longer appears in `list_frozen_recipes()` unless `include_consumed: true` is passed.
+
 ---
 
 ## Other
@@ -179,3 +220,10 @@ Recipe-book widget counts.
 
 - **Input**: none
 - **Returns**: `{ friends, queued, frozen }`
+
+### `update_planner_options`
+Update planner display/behaviour preferences (timezone, planner start day, which nutrition columns to show, etc).
+
+- **Input**: `{ options: Record<string, string|number|boolean> }` — pass Rails-style nested keys like `user[time_zone]` or `calendar_settings[show_calories]`. Example: `{ "user[time_zone]": "America/Denver", "calendar_settings[show_calories]": 1 }`.
+- **Returns**: `{ ok: true }`
+- **Notes**: Rarely needed. The HAR shows the UI's settings panel sending the full options object on every save.
