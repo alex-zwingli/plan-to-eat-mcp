@@ -33,20 +33,36 @@ jobs:
       - run: npm run build
       - run: npm run check:docs
 
-      # Proves the tarball builds and its contents are what we expect. This does
-      # NOT exercise npm auth -- --dry-run never contacts the registry, so
-      # trusted publishing is only truly proven by a real release.
-      - name: npm publish --dry-run
-        run: npm publish --dry-run
-
+      # Registry auth first: it is the step most likely to be misconfigured,
+      # and it must not be masked by anything downstream.
       - name: Install mcp-publisher
         run: |
           curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
 
       # The real test: does OIDC from this repo grant the io.github.alex-zwingli
-      # namespace? Failure here means the release job would strand a release.
+      # namespace? Failure here means the release job would strand a release --
+      # published to npm, absent from the registry.
       - name: Authenticate to the MCP registry (no publish)
         run: ./mcp-publisher login github-oidc
+
+      - name: Pack the tarball
+        run: npm pack --dry-run
+
+      # --dry-run still asks the registry whether the version exists, so between
+      # releases it correctly reports the current version as taken. That is the
+      # expected state here; anything else is a real failure.
+      - name: Registry publish preflight
+        run: |
+          set +e
+          OUT=$(npm publish --dry-run 2>&1); CODE=$?
+          echo "$OUT"
+          if [ "$CODE" -ne 0 ]; then
+            if echo "$OUT" | grep -q "cannot publish over the previously published versions"; then
+              echo "::notice::Version already published -- expected between releases."
+            else
+              exit "$CODE"
+            fi
+          fi
 
       - name: Check versions agree
         run: |
