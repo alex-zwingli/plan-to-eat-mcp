@@ -1,0 +1,59 @@
+# Manual dress rehearsal for a release. Publishes NOTHING.
+#
+# The release job's two auth paths only exercise themselves during a real
+# release, which is a bad time to discover a misconfiguration -- npm publishes
+# before the registry step runs, so a registry failure strands a version on npm
+# with no matching registry entry. This runs the same checks and proves the MCP
+# registry OIDC login, stopping short of any publish.
+#
+# Run from Actions -> Preflight -> Run workflow.
+name: Preflight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # same OIDC permission the release job uses
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+
+      - run: npm install -g npm@latest
+      - run: npm ci
+      - run: npm run build
+      - run: npm run check:docs
+
+      # Proves the tarball builds and its contents are what we expect. This does
+      # NOT exercise npm auth -- --dry-run never contacts the registry, so
+      # trusted publishing is only truly proven by a real release.
+      - name: npm publish --dry-run
+        run: npm publish --dry-run
+
+      - name: Install mcp-publisher
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+
+      # The real test: does OIDC from this repo grant the io.github.alex-zwingli
+      # namespace? Failure here means the release job would strand a release.
+      - name: Authenticate to the MCP registry (no publish)
+        run: ./mcp-publisher login github-oidc
+
+      - name: Check versions agree
+        run: |
+          PKG=$(node -p "require('./package.json').version")
+          SRV=$(node -p "require('./server.json').version")
+          SRVPKG=$(node -p "require('./server.json').packages[0].version")
+          MAN=$(node -p "require('./.release-please-manifest.json')['.']")
+          echo "package.json=$PKG server.json=$SRV packages[0]=$SRVPKG manifest=$MAN"
+          test "$PKG" = "$SRV" && test "$PKG" = "$SRVPKG" && test "$PKG" = "$MAN"
+          echo "All four versions agree."
