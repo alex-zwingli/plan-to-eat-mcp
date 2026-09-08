@@ -18,6 +18,14 @@
           "type": "json",
           "path": "server.json",
           "jsonpath": "$.packages[0].version"
+        },
+        {
+          "type": "generic",
+          "path": ".claude/skills/plan-to-eat/SKILL.md"
+        },
+        {
+          "type": "generic",
+          "path": ".claude/skills/plan-to-eat-cli/SKILL.md"
         }
       ]
     }

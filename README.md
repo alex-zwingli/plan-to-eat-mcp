@@ -274,6 +274,17 @@ Claude Code, Cursor, Codex, Copilot, Gemini CLI and the rest. Add
 and not the server — each skill's setup section walks the agent through building
 the MCP server or CLI if it isn't already there.
 
+For [OpenClaw](https://docs.openclaw.ai) agents, both skills are on
+[ClawHub](https://clawhub.ai):
+
+```bash
+clawhub install plan-to-eat        # MCP tools
+clawhub install plan-to-eat-cli    # shell / CLI
+```
+
+Their frontmatter declares the credentials and binaries each one needs under
+`metadata.openclaw`, so ClawHub can check your environment at install time.
+
 ---
 
 ## ⌨️ Use it from the terminal

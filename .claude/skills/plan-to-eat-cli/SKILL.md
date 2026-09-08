@@ -1,6 +1,32 @@
 ---
 name: plan-to-eat-cli
 description: Use when the user wants to interact with Plan to Eat (plantoeat.com) — meal plan, recipes, planner notes/ingredients/leftovers, freezer, shopping list — and the `plan-to-eat` CLI is available but the plan-to-eat MCP server is NOT connected. Same capabilities as the MCP server, driven through the shell. Triggers on "what's on my meal plan", "plan X for Wednesday dinner", "add a note to Tuesday breakfast", "move dinner to Friday", "freeze leftovers", "what's in the freezer", "what's in my shopping list" — when those must be answered with shell commands.
+version: 0.5.0 # x-release-please-version
+metadata:
+  openclaw:
+    requires:
+      env:
+        - PLAN_TO_EAT_USERNAME
+        - PLAN_TO_EAT_PASSWORD
+      bins:
+        - node
+      anyBins:
+        - plan-to-eat
+        - npx
+    primaryEnv: PLAN_TO_EAT_PASSWORD
+    envVars:
+      - name: PLAN_TO_EAT_USERNAME
+        required: true
+        description: Plan to Eat login email.
+      - name: PLAN_TO_EAT_PASSWORD
+        required: true
+        description: Plan to Eat password.
+      - name: PLAN_TO_EAT_SESSION_FILE
+        required: false
+        description: Where the cookie session is cached. Set to "" to disable caching.
+    emoji: "🍽️"
+    homepage: https://github.com/alex-zwingli/plan-to-eat-mcp
+    license: MIT
 ---
 
 # plan-to-eat CLI
