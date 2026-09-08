@@ -1,0 +1,43 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.alex-zwingli/plan-to-eat",
+  "description": "Unofficial Plan to Eat (plantoeat.com) client: recipe book, weekly meal planner, leftovers, freezer tracking, and shopping list.",
+  "repository": {
+    "url": "https://github.com/alex-zwingli/plan-to-eat-mcp",
+    "source": "github"
+  },
+  "version": "0.5.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "plan-to-eat-mcp",
+      "version": "0.5.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "PLAN_TO_EAT_USERNAME",
+          "description": "Plan to Eat login email",
+          "isRequired": true,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "PLAN_TO_EAT_PASSWORD",
+          "description": "Plan to Eat password",
+          "isRequired": true,
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "PLAN_TO_EAT_SESSION_FILE",
+          "description": "Where the cookie session is cached. Set to \"\" to disable caching.",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}

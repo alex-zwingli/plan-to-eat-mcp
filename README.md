@@ -102,15 +102,33 @@ you get the trial, and I get a tiny thank-you. Win/win.
 ## 🚀 Quick start
 
 ```bash
+npx -y plan-to-eat-mcp          # run the MCP server
+npm i -g plan-to-eat-mcp        # …or install both bins on PATH
+```
+
+Requires Node 18+ (for built-in `fetch`) and a
+[Plan to Eat](https://www.plantoeat.com/ref/d7d2327524) account.
+
+The package ships two bins: `plan-to-eat-mcp` (the MCP server) and
+`plan-to-eat` (the CLI). To run the CLI through `npx` without installing, note
+that you have to select it explicitly, since the default bin is the server:
+
+```bash
+npx -y -p plan-to-eat-mcp plan-to-eat --help
+```
+
+<details>
+<summary>Building from a clone instead (for development, or the Claude Code plugin)</summary>
+
+```bash
 git clone https://github.com/alex-zwingli/plan-to-eat-mcp.git
 cd plan-to-eat-mcp
 npm install
 npm run build
 ```
 
-Requires Node 18+ (for built-in `fetch`) and a
-[Plan to Eat](https://www.plantoeat.com/ref/d7d2327524) account.
 The build emits CommonJS to `dist/`.
+</details>
 
 ### Configuration
 
@@ -165,7 +183,7 @@ rather than committing them anywhere.
 claude mcp add plan-to-eat \
   --env PLAN_TO_EAT_USERNAME=you@example.com \
   --env PLAN_TO_EAT_PASSWORD=hunter2 \
-  -- node /absolute/path/to/plan-to-eat-mcp/dist/mcp/server.js
+  -- npx -y plan-to-eat-mcp
 ```
 
 Add `--scope user` to make it available in every project instead of just this
@@ -182,8 +200,8 @@ Edit `claude_desktop_config.json` — **Settings → Developer → Edit Config**
 {
   "mcpServers": {
     "plan-to-eat": {
-      "command": "node",
-      "args": ["/absolute/path/to/plan-to-eat-mcp/dist/mcp/server.js"],
+      "command": "npx",
+      "args": ["-y", "plan-to-eat-mcp"],
       "env": {
         "PLAN_TO_EAT_USERNAME": "you@example.com",
         "PLAN_TO_EAT_PASSWORD": "hunter2"
@@ -203,23 +221,26 @@ custom SDK clients all take the same three things. Point them at:
 | Field | Value |
 |---|---|
 | Transport | stdio |
-| Command | `node` |
-| Args | `["/absolute/path/to/plan-to-eat-mcp/dist/mcp/server.js"]` |
+| Command | `npx` |
+| Args | `["-y", "plan-to-eat-mcp"]` |
 | Env | `PLAN_TO_EAT_USERNAME`, `PLAN_TO_EAT_PASSWORD` |
 
 Most of them use the same `mcpServers` JSON block as Claude Desktop above —
 often in `.cursor/mcp.json`, `.vscode/mcp.json`, or the host's settings UI.
 
-If you installed the package rather than cloning it (`npm i -g plan-to-eat-mcp`),
-use the `plan-to-eat-mcp` bin as the command and drop the args entirely.
+If you installed globally (`npm i -g plan-to-eat-mcp`), use the
+`plan-to-eat-mcp` bin as the command and drop the args entirely. If you built
+from a clone, the command is `node` with
+`["/absolute/path/to/plan-to-eat-mcp/dist/mcp/server.js"]`.
 
-> **Absolute paths matter.** MCP hosts don't launch servers from your project
-> directory, so a relative path will fail to resolve.
+> **Absolute paths matter** for the clone route. MCP hosts don't launch servers
+> from your project directory, so a relative path will fail to resolve. The
+> `npx` command above sidesteps this entirely.
 
 ### Verify it works
 
 ```bash
-PLAN_TO_EAT_USERNAME=you@example.com PLAN_TO_EAT_PASSWORD=hunter2 npm start
+PLAN_TO_EAT_USERNAME=you@example.com PLAN_TO_EAT_PASSWORD=hunter2 npx -y plan-to-eat-mcp
 ```
 
 You should see `[plan-to-eat] mcp server ready on stdio (30 tools)` on stderr.
@@ -261,8 +282,15 @@ Every MCP tool is also a subcommand. Underscores become dashes; both spellings
 work.
 
 ```bash
-npm run build
-node dist/cli/main.js --help          # or `npm link` for a global `plan-to-eat`
+npm i -g plan-to-eat-mcp
+plan-to-eat --help
+```
+
+Or without installing — note the `-p`, since the package's default bin is the
+MCP server, not the CLI:
+
+```bash
+npx -y -p plan-to-eat-mcp plan-to-eat --help
 ```
 
 ```console

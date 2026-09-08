@@ -16,27 +16,26 @@ If the user references Plan to Eat but no `plan-to-eat__*` tools are available, 
 
 ### If it isn't installed
 
-The server is a Node 18+ package built from source. **Show these commands to the user rather than running them yourself** — the install writes outside the working directory, and the credentials must come from the user's own shell, not from you.
+The server is published to npm as [`plan-to-eat-mcp`](https://www.npmjs.com/package/plan-to-eat-mcp) and needs Node 18+. **Show these commands to the user rather than running them yourself** — they change the host's configuration, and the credentials must come from the user's own shell, not from you.
+
+```bash
+# Claude Code:
+claude mcp add plan-to-eat -- npx -y plan-to-eat-mcp
+
+# Claude Desktop, Cursor, Windsurf, Cline, Zed — the same stdio block:
+#   "command": "npx", "args": ["-y", "plan-to-eat-mcp"]
+```
+
+No clone or build step. To pin a version, use `plan-to-eat-mcp@0.5.0`; to avoid the per-launch npx resolve, `npm i -g plan-to-eat-mcp` and use the `plan-to-eat-mcp` bin as the command with no args.
+
+Claude Code users who want the skills *and* the server together can instead install the plugin from a clone:
 
 ```bash
 git clone https://github.com/alex-zwingli/plan-to-eat-mcp.git
-cd plan-to-eat-mcp
-npm install
-npm run build
-```
-
-Then wire it into the host:
-
-```bash
-# Claude Code, whole plugin (MCP server + both skills):
-claude plugin marketplace add /absolute/path/to/plan-to-eat-mcp
+cd plan-to-eat-mcp && npm install && npm run build
+claude plugin marketplace add "$(pwd)"
 claude plugin install plan-to-eat@plan-to-eat
-
-# or just the MCP server:
-claude mcp add plan-to-eat -- node /absolute/path/to/plan-to-eat-mcp/dist/mcp/server.js
 ```
-
-Other hosts (Claude Desktop, Cursor, Windsurf, Cline, Zed) take the same stdio command in their `mcpServers` JSON block. Absolute paths only — hosts don't launch servers from the project directory.
 
 **Credentials** come from two environment variables the host passes through:
 
@@ -49,7 +48,6 @@ Other hosts (Claude Desktop, Cursor, Windsurf, Cline, Zed) take the same stdio c
 Ask the user to export them in their shell profile. **Never ask them to paste a password into the conversation, and never put credentials in a command you run.** After installing, the host has to be restarted before the tools appear.
 
 Prefer these MCP tools when they're available: no subprocess per call, and structured results without a JSON round-trip.
-
 ## Core concepts
 
 **Recipe** — identified by numeric `id`. Fetch the catalog with `list_recipes` (returns ~500 entries with summaries); drill into one with `get_recipe` for directions/comments/full ingredient list. **Recipe IDs are not guessable** — always look them up before referencing.

@@ -1,6 +1,7 @@
 {
   "name": "plan-to-eat-mcp",
   "version": "0.5.0",
+  "mcpName": "io.github.alex-zwingli/plan-to-eat",
   "description": "Unofficial Plan to Eat (plantoeat.com) JSON API client, CLI, and Model Context Protocol server.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

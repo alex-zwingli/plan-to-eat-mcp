@@ -20,19 +20,20 @@ plan-to-eat --version
 
 **Command not found** — the CLI isn't on `PATH`. Work down this list before giving up:
 
-1. **Already cloned?** Look for a build in the repo: `node <repo>/dist/cli/main.js --version`. If `dist/` is missing but the repo is there, the build step was skipped — `npm install && npm run build` in the repo, then retry.
-2. **Not installed at all?** It's a Node 18+ package built from source. **Show the user these commands rather than running them yourself** — the install writes outside the working directory:
+1. **Run it without installing.** The CLI ships in the npm package and needs Node 18+:
 
    ```bash
-   git clone https://github.com/alex-zwingli/plan-to-eat-mcp.git
-   cd plan-to-eat-mcp
-   npm install
-   npm run build
-   npm link          # optional: puts `plan-to-eat` on PATH
+   npx -y -p plan-to-eat-mcp plan-to-eat --version
    ```
 
-   Without `npm link`, invoke it as `node /absolute/path/to/plan-to-eat-mcp/dist/cli/main.js <command>` — everything else in this skill works the same.
-3. **Node missing entirely** (`node --version` fails) — stop and tell the user; don't install a runtime for them.
+   Note the `-p`. The package exposes two bins, and the one named `plan-to-eat-mcp` — what plain `npx plan-to-eat-mcp` resolves to — is the **MCP server**, which will sit and wait on stdio. `-p plan-to-eat-mcp plan-to-eat` is what selects the CLI. If this works, prefix every command in this skill the same way.
+2. **Install it properly.** Faster than `npx` per call, and puts `plan-to-eat` on `PATH`. **Show the user this rather than running it yourself** — it writes outside the working directory:
+
+   ```bash
+   npm i -g plan-to-eat-mcp
+   ```
+3. **Working from a clone?** `node <repo>/dist/cli/main.js --version`. If `dist/` is missing, the build step was skipped — `npm install && npm run build` in the repo, then retry.
+4. **Node missing entirely** (`node --version` fails) — stop and tell the user; don't install a runtime for them.
 
 **"Missing PLAN_TO_EAT_USERNAME and/or PLAN_TO_EAT_PASSWORD"** — credentials aren't set. They come from the environment or a `.env` in the working directory:
 
