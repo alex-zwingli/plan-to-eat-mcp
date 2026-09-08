@@ -226,7 +226,7 @@ Add items to the shopping list.
 - **Returns**: the created `ShoppingListItem[]`
 - **Notes**:
   - Omit `category_id` and the client asks Plan to Eat's `/recommend_category` for the aisle, the same guess the app's add-items dialog makes as you type. It comes back empty for titles it doesn't recognise, which leaves the line uncategorized.
-  - Omit `store_id` and the server reuses whichever store you last chose for that item ("Auto-select" in the dialog).
+  - Omit `store_id` and the client asks `/shopping_lists/last_store_designated` which store that item was last bought at, falling back to the account's default store when it's new. This is the dialog's "Auto-select" — note that the `autoStore` form field alone does *not* do it: the server ignores that field, it only tells the browser to run the lookup.
   - `note` is the line's own free-text note; it comes back as `extra_notes`.
   - The endpoint returns nothing useful, so created lines are recovered by diffing item ids across the write.
 

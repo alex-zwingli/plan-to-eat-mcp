@@ -558,10 +558,32 @@ export class PlanToEat {
   }
 
   /**
+   * The store this item was last assigned to, or null if it's new to the
+   * account (or was only ever left at the default store). This is the lookup
+   * behind the add dialog's "Auto-select" checkbox — the checkbox itself only
+   * tells the *browser* whether to run it, so anything driving the endpoint
+   * directly has to do the lookup itself.
+   */
+  async lastStoreDesignated(title: string, category_id?: number | null): Promise<number | null> {
+    const body = await this.form('POST', '/shopping_lists/last_store_designated', {
+      shopping_list_id: await this.getShoppingListId(),
+      title,
+      category_id: category_id ?? '',
+    });
+    try {
+      const id = JSON.parse(body) as number | null;
+      return typeof id === 'number' ? id : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Add lines to the shopping list. Only `title` is required per item; omit
    * `category_id` and we ask `/recommend_category` for the aisle, omit
-   * `store_id` and the server reuses whichever store you last picked for that
-   * item. Returns the lines that appeared, recovered by diffing item ids.
+   * `store_id` and we ask `/shopping_lists/last_store_designated` for the
+   * store you last bought that item at. Returns the lines that appeared,
+   * recovered by diffing item ids.
    */
   async addShoppingListItems(items: ShoppingListItemInput[]): Promise<ShoppingListItem[]> {
     if (items.length === 0) return [];
@@ -569,18 +591,24 @@ export class PlanToEat {
     const before = new Set((await this.rawShoppingListItems()).flatMap((i) => i.item_ids));
 
     const pairs: [string, FormValue][] = [['shopping_list_id', shopping_list_id]];
-    // "Auto-select" in the dialog: fill in each item's last-used store. Only
-    // bites on rows that don't name one (those carry store 0 = default store).
+    // The dialog's "Auto-select" checkbox. The server does nothing with it —
+    // it only tells the browser to run the lookups below — but the UI sends
+    // it, so we do too.
     if (items.some((i) => i.store_id === undefined)) pairs.push(['autoStore', 1]);
     for (const item of items) {
+      // Same two lookups the dialog fires as you type a row, in the same
+      // order: the aisle first, then the store, which takes the aisle.
       const category = item.category_id ?? (await this.recommendCategory(item.title))?.category_id ?? '';
+      const store = item.store_id
+        ?? (await this.lastStoreDesignated(item.title, category === '' ? null : category))
+        ?? 0; // 0 = the account's default store, for an item with no history.
       // Key order matters here — see the note on form().
       pairs.push(['ingredients[][amount]', item.amount ?? '']);
       pairs.push(['ingredients[][unit]', item.unit ?? '']);
       pairs.push(['ingredients[][title]', item.title]);
       pairs.push(['ingredients[][note]', item.note ?? '']);
       pairs.push(['ingredients[][category]', category]);
-      pairs.push(['ingredients[][store]', item.store_id ?? 0]);
+      pairs.push(['ingredients[][store]', store]);
     }
     await this.form('POST', '/shopping_lists/update', pairs);
 
