@@ -1,7 +1,7 @@
 // End-to-end smoke test for the client.
 import * as dotenv from 'dotenv';
 import * as fs from 'node:fs';
-import { PlanToEat, type Session } from './client.js';
+import { PlanToEat, type Session } from '../core/client.js';
 
 dotenv.config({ override: true });
 

@@ -16,7 +16,7 @@ async function main(): Promise<void> {
 
   const transport = new StdioClientTransport({
     command: process.execPath,
-    args: [path.join(__dirname, 'server.js')],
+    args: [path.join(__dirname, '..', 'mcp', 'server.js')],
     env: {
       ...(process.env as Record<string, string>),
       PLAN_TO_EAT_USERNAME: username,

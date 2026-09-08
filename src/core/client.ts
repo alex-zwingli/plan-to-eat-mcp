@@ -182,7 +182,7 @@ export interface FrozenRecipe {
 
 export interface Session { cookies: Record<string, string> }
 
-class HttpError extends Error {
+export class HttpError extends Error {
   status: number;
   body: unknown;
   constructor(message: string, status: number, body: unknown) {

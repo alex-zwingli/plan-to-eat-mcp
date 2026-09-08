@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "plan-to-eat": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/dist/mcp/server.js"],
+      "env": {
+        "PLAN_TO_EAT_USERNAME": "${PLAN_TO_EAT_USERNAME:-}",
+        "PLAN_TO_EAT_PASSWORD": "${PLAN_TO_EAT_PASSWORD:-}"
+      }
+    }
+  }
+}

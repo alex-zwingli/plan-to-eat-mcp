@@ -4,9 +4,9 @@
 > Hand your favorite LLM the keys to your Plan to Eat recipe book, planner,
 > and shopping list — over the Model Context Protocol.
 
-A drop-in MCP server (and standalone Node client) that gives Claude, ChatGPT,
-or any MCP-aware assistant full read/write access to your
-[Plan to Eat](https://www.plantoeat.com/ref/d7d2327524) account.
+A drop-in MCP server, a CLI, and a standalone Node client that give Claude,
+ChatGPT, any MCP-aware assistant, or your own shell full read/write access to
+your [Plan to Eat](https://www.plantoeat.com/ref/d7d2327524) account.
 
 ```
 You:  "Save the Bon Appétit miso pasta from this URL and tag it weeknight."
@@ -16,6 +16,22 @@ You:  "Plan dinner around it Tuesday and add the missing pantry items to my
        shopping list."
 LLM:  ✓ event created 2026-05-05 / dinner / 4 servings.
       ✓ shopping list now reflects miso, mirin, and dashi.
+```
+
+…or, when you'd rather not talk to anything:
+
+```console
+$ plan-to-eat get-planner-week 2026-05-04
+start_date  2026-05-04
+end_date    2026-05-10
+
+ID        DATE        SECTION    KIND        RECIPE_ID  RECIPE_TITLE        DESCRIPTION            SERVINGS
+────────  ──────────  ─────────  ──────────  ─────────  ──────────────────  ─────────────────────  ────────
+67698872  2026-05-05  breakfast  recipe      17314561   Breakfast Sandwich                         8
+67483177  2026-05-05  dinner     ingredient                                 Asparagus (in season)  0
+67710784  2026-05-06  dinner     note                                       Cucumber salad         0
+
+3 rows
 ```
 
 That's it. No recipe re-typing. No copy-pasting URLs into a phone app. Just
@@ -45,6 +61,9 @@ you get the trial, and I get a tiny thank-you. Win/win.
 
 - 🤖 **MCP server out of the box** — point Claude Desktop, Claude Code, OpenClaw,
   or any MCP-compatible host at it and start talking to your recipe book.
+- ⌨️ **A CLI over the same tools** — every MCP tool is also a `plan-to-eat`
+  subcommand, with tables for humans and `--json` for scripts. One registry
+  feeds both surfaces, so they can't drift.
 - 🔐 **Auto-auth & auto-recovery** — set your credentials once, the server
   handles login, caches the cookie session to disk, and silently re-auths
   whenever Plan to Eat invalidates it.
@@ -67,8 +86,8 @@ you get the trial, and I get a tiny thank-you. Win/win.
 - 🦺 **100% TypeScript** — fully typed `Recipe`, `Ingredient`, `PlannerEvent`
   shapes plus a generic `_json<T>` so your tools never have to guess what
   comes back.
-- 📚 **A library too** — `client.ts` is a clean, plain-Node API client you can
-  drop into any script.
+- 📚 **A library too** — `core/client.ts` is a clean, plain-Node API client you
+  can drop into any script.
 - 🧠 **Bundled Claude Code skill** — `.claude/skills/plan-to-eat/SKILL.md`
   teaches any agent the common workflows and gotchas (the supper-vs-dinner
   alias, the `description`-vs-`title` mismatch, etc.) so it doesn't have to
@@ -93,14 +112,78 @@ Requires Node 18+ (for built-in `fetch`) and a
 [Plan to Eat](https://www.plantoeat.com/ref/d7d2327524) account.
 The build emits CommonJS to `dist/`.
 
-### Wire it into Claude Desktop / Claude Code
+### Configuration
+
+| Var | Required | Default | Description |
+|---|---|---|---|
+| `PLAN_TO_EAT_USERNAME` | yes | — | Plan to Eat login email |
+| `PLAN_TO_EAT_PASSWORD` | yes | — | Plan to Eat password |
+| `PLAN_TO_EAT_SESSION_FILE` | no | `~/.plan-to-eat-session.json` | Where the cookie session is cached. Set to `""` to disable caching. |
+
+The CLI also reads a `.env` in the working directory (shell variables win). The
+MCP server does not — MCP hosts pass env explicitly, as shown below.
+
+---
+
+## 🤖 Use it with an agent
+
+Any host that can launch a **local stdio MCP server** works. The server needs
+one command, two env vars, and nothing else — no ports, no OAuth, no daemon.
+
+### Claude Code, the easy way: install the plugin
+
+The repo ships as a Claude Code plugin — MCP server *and* both skills in one
+step:
+
+```bash
+export PLAN_TO_EAT_USERNAME=you@example.com
+export PLAN_TO_EAT_PASSWORD=hunter2
+
+git clone https://github.com/alex-zwingli/plan-to-eat-mcp.git
+cd plan-to-eat-mcp && npm install && npm run build
+
+claude plugin marketplace add "$(pwd)"
+claude plugin install plan-to-eat@plan-to-eat
+```
+
+That gives you:
+
+| Component | What it is |
+|---|---|
+| MCP server `plan-to-eat` | all 30 tools |
+| Skill `plan-to-eat` | how to *use* the MCP tools well — workflows and gotchas |
+| Skill `plan-to-eat-cli` | the same, for agents driving the CLI instead |
+
+Confirm with `claude plugin details plan-to-eat@plan-to-eat` and `claude mcp list`.
+The server reads `PLAN_TO_EAT_USERNAME` / `PLAN_TO_EAT_PASSWORD` from the
+environment Claude Code was launched with, so export them in your shell profile
+rather than committing them anywhere.
+
+### Claude Code, manually
+
+```bash
+claude mcp add plan-to-eat \
+  --env PLAN_TO_EAT_USERNAME=you@example.com \
+  --env PLAN_TO_EAT_PASSWORD=hunter2 \
+  -- node /absolute/path/to/plan-to-eat-mcp/dist/mcp/server.js
+```
+
+Add `--scope user` to make it available in every project instead of just this
+one. Check it connected with `claude mcp list`, or `/mcp` inside a session.
+
+### Claude Desktop
+
+Edit `claude_desktop_config.json` — **Settings → Developer → Edit Config**, or:
+
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 
 ```jsonc
 {
   "mcpServers": {
     "plan-to-eat": {
       "command": "node",
-      "args": ["/absolute/path/to/plan-to-eat-mcp/dist/server.js"],
+      "args": ["/absolute/path/to/plan-to-eat-mcp/dist/mcp/server.js"],
       "env": {
         "PLAN_TO_EAT_USERNAME": "you@example.com",
         "PLAN_TO_EAT_PASSWORD": "hunter2"
@@ -110,29 +193,99 @@ The build emits CommonJS to `dist/`.
 }
 ```
 
-Restart your MCP host, and you're cooking.
+Restart Claude Desktop, and you're cooking.
 
-### Run it standalone
+### Any other MCP host
+
+Cursor, Windsurf, Zed, Cline, Continue, OpenClaw, VS Code's MCP support, and
+custom SDK clients all take the same three things. Point them at:
+
+| Field | Value |
+|---|---|
+| Transport | stdio |
+| Command | `node` |
+| Args | `["/absolute/path/to/plan-to-eat-mcp/dist/mcp/server.js"]` |
+| Env | `PLAN_TO_EAT_USERNAME`, `PLAN_TO_EAT_PASSWORD` |
+
+Most of them use the same `mcpServers` JSON block as Claude Desktop above —
+often in `.cursor/mcp.json`, `.vscode/mcp.json`, or the host's settings UI.
+
+If you installed the package rather than cloning it (`npm i -g plan-to-eat-mcp`),
+use the `plan-to-eat-mcp` bin as the command and drop the args entirely.
+
+> **Absolute paths matter.** MCP hosts don't launch servers from your project
+> directory, so a relative path will fail to resolve.
+
+### Verify it works
 
 ```bash
-PLAN_TO_EAT_USERNAME=you@example.com \
-PLAN_TO_EAT_PASSWORD=hunter2 \
-  npm start
+PLAN_TO_EAT_USERNAME=you@example.com PLAN_TO_EAT_PASSWORD=hunter2 npm start
 ```
 
-### Configuration
+You should see `[plan-to-eat] mcp server ready on stdio (30 tools)` on stderr.
+That's the server waiting for a client — Ctrl-C out. If instead you get a
+credentials error, fix that before wiring up a host, where the failure is
+harder to see.
 
-| Var | Required | Default | Description |
-|---|---|---|---|
-| `PLAN_TO_EAT_USERNAME` | yes | — | Plan to Eat login email |
-| `PLAN_TO_EAT_PASSWORD` | yes | — | Plan to Eat password |
-| `PLAN_TO_EAT_SESSION_FILE` | no | `~/.plan-to-eat-session.json` | Where the cookie session is cached. Set to `""` to disable caching. |
+### Teach your agent the workflows
+
+Two skills ship in `.claude/skills/`, covering the common flows and the sharp
+edges (the supper-vs-dinner alias, the `description`-vs-`title` mismatch on
+note entries, checking for duplicates before scheduling):
+
+- **`plan-to-eat`** — for agents calling the MCP tools.
+- **`plan-to-eat-cli`** — for agents that have a shell but no MCP server. Same
+  30 capabilities, driven through subcommands, with `--json` for parsing.
+
+The plugin install above registers both. Agents on other hosts can read them as
+plain context — point them at the files, or paste one into your system prompt.
 
 ---
 
-## 🧰 Tools the server exposes
+## ⌨️ Use it from the terminal
 
-Full reference with input schemas and return shapes: **[docs/TOOLS.md](./docs/TOOLS.md)**.
+Every MCP tool is also a subcommand. Underscores become dashes; both spellings
+work.
+
+```bash
+npm run build
+node dist/cli/main.js --help          # or `npm link` for a global `plan-to-eat`
+```
+
+```console
+$ plan-to-eat list-frozen-recipes
+ID      RECIPE_ID  COUNT  SERVINGS  FROZEN_ON
+──────  ─────────  ─────  ────────  ──────────
+227854  44676380   6      1.0       2025-05-04
+227908  17314561   3      1.0       2025-05-05
+
+2 rows
+
+$ plan-to-eat add-planner-note "Defrost chicken" 2026-05-05 dinner
+id       67710999
+date     2026-05-05
+section  dinner
+
+$ plan-to-eat get-counts --json | jq .frozen
+10
+```
+
+- **Positional or flagged** — `get-recipe 123` and `get-recipe --id 123` are the
+  same. `<command> --help` lists which arguments are positional.
+- **`--json`** prints the raw payload instead of a table, for piping into `jq`.
+- **Arrays** repeat the flag (`--event_ids 11 --event_ids 22`) or take JSON
+  (`--event_ids '[11,22]'`). Object arguments take JSON:
+  `--ingredients '{"title":"bread","amount":"2"}'`.
+- **Validation is the same Zod schema the MCP server uses**, so a bad enum or a
+  malformed date fails the same way in both surfaces.
+
+---
+
+## 🧰 The 30 tools
+
+Each is an MCP tool *and* a CLI subcommand — `add_planner_recipe` the tool is
+`plan-to-eat add-planner-recipe` in the shell. Full reference with input
+schemas and return shapes: **[docs/TOOLS.md](./docs/TOOLS.md)**.
 
 **Recipes**
 
@@ -218,6 +371,20 @@ await pte.deleteRecipe(created.id);
 The client stashes credentials internally on first login so it can transparently
 re-authenticate if the cached cookies expire mid-session.
 
+The tool registry is exported too, if you want to build your own adapter over
+the same 30 capabilities:
+
+```ts
+import { toolsByName, createSession } from 'plan-to-eat-mcp';
+
+const { pte, ensure } = createSession();
+await ensure();
+
+const getRecipe = toolsByName.get('get_recipe')!;
+console.log(getRecipe.description);          // same text the MCP host sees
+const recipe = await getRecipe.run(pte, { id: 123 });
+```
+
 ---
 
 ## 🧪 API reference (the parts that work)
@@ -288,8 +455,8 @@ The single-recipe response has 65 fields. Writable on POST/PUT include:
 nutrition strings (`calories`, `sodium`, etc.), and ingredients.
 
 **Ingredients use Rails nested-attributes** — the wire field is
-`recipe_ingredients_attributes`, not `ingredients`. The `client.js` and the
-MCP `create_recipe` / `update_recipe` tools accept the friendlier name
+`recipe_ingredients_attributes`, not `ingredients`. The client and the
+`create_recipe` / `update_recipe` tools accept the friendlier name
 `ingredients` and translate. Each entry:
 
 ```json
@@ -302,21 +469,51 @@ To delete an existing ingredient on update, include its `id` plus
 
 ---
 
-## 📁 Files
+## 📁 Layout
 
-- `src/client.ts` — the API client (runtime depends only on `fetch` and cookies).
-- `src/server.ts` — the MCP server (stdio transport).
-- `src/verify.ts` — end-to-end smoke test of the client (recipes).
-- `src/planner_verify.ts` — end-to-end smoke test of the planner write endpoints.
-- `src/test_server.ts` — end-to-end smoke test of the MCP server.
-- `docs/TOOLS.md` — per-tool reference with input/output shapes.
-- `.claude/skills/plan-to-eat/SKILL.md` — Claude Code skill that teaches an
-  agent the common workflows and gotchas.
-- `dist/` — emitted by `npm run build`. The MCP host runs `dist/server.js`.
+One package, three layers. The logic lives in `core/`; the MCP server and the
+CLI are thin adapters over the same registry.
+
+```
+src/
+  core/
+    client.ts     API client — no MCP, no CLI, no I/O beyond fetch
+    tools.ts      the tool registry: name, description, Zod shape, handler
+    session.ts    credentials + cookie-cache bootstrap, shared by both adapters
+    version.ts    version read from package.json at runtime
+  mcp/server.ts   registry -> MCP tools (stdio transport)
+  cli/
+    main.ts       registry -> subcommands, help, dispatch
+    args.ts       argv -> Zod-validated arguments
+    render.ts     results -> tables (or raw JSON under --json)
+  scripts/        smoke tests and the docs coverage check
+  index.ts        public entrypoint for library consumers
+  server.ts       back-compat shim, see below
+```
+
+**Adding a tool means adding one entry to `src/core/tools.ts`.** It appears in
+the MCP server and the CLI at once, with the same name, schema, and
+description — they can't drift apart.
+
+Other files worth knowing:
+
+- `docs/TOOLS.md` — per-tool reference with input/output shapes and gotchas.
+  Hand-written; `npm run check:docs` fails if it and the registry disagree
+  about which tools exist.
+- `.claude/skills/plan-to-eat/SKILL.md` — how to use the MCP tools well.
+- `.claude/skills/plan-to-eat-cli/SKILL.md` — the same, for the CLI.
+- `.claude-plugin/` — Claude Code plugin and marketplace manifests.
+- `.mcp.json` — the plugin's MCP server declaration.
+- `dist/` — emitted by `npm run build`.
+
+> **Upgrading from ≤0.4?** The server moved from `dist/server.js` to
+> `dist/mcp/server.js`. The old path still works — it's a shim that loads the
+> new one — so existing host configs and deployments keep running. New configs
+> should use the new path or the `plan-to-eat-mcp` bin.
 
 Playwright was used during reverse engineering and is kept as a devDependency
-for any future API-discovery work; the runtime depends only on `fetch` and
-the MCP SDK.
+for any future API-discovery work; the runtime depends only on `fetch`, the
+MCP SDK, and Zod.
 
 ### Scripts
 
@@ -324,11 +521,26 @@ the MCP SDK.
 |---|---|
 | `npm run build` | Compile `src/**/*.ts` to `dist/`. |
 | `npm run watch` | Same, in watch mode. |
-| `npm start` | Run the compiled MCP server (`dist/server.js`). |
+| `npm start` | Run the compiled MCP server (`dist/mcp/server.js`). |
+| `npm run cli -- <command>` | Run the CLI without linking it globally. |
 | `npm run verify` | Smoke-test the client end-to-end against your account (recipes). |
 | `npm run verify:planner` | Smoke-test the planner write endpoints (creates + cleans up test events on a date 6 months out). |
 | `npm test` | Smoke-test the MCP server end-to-end (spawns it and calls tools). |
+| `npm run check:docs` | Check `docs/TOOLS.md` covers exactly the registered tools. |
 | `npm run clean` | Remove `dist/`. |
+
+The `verify*` and `test` scripts hit your real account. They create and delete
+their own test data, but they are not a dry run — see
+[CONTRIBUTING.md](./CONTRIBUTING.md).
+
+---
+
+## 🤝 Contributing
+
+Bug reports, new endpoints, and upstream-breakage fixes are all welcome — see
+**[CONTRIBUTING.md](./CONTRIBUTING.md)**. The one thing to know up front: the
+test scripts run against a **real** Plan to Eat account and create real data
+(then clean it up). Use your own.
 
 ---
 
