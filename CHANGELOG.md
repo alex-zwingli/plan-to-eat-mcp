@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.2](https://github.com/alex-zwingli/plan-to-eat-mcp/compare/v0.7.1...v0.7.2) (2026-09-08)
+
+
+### Bug Fixes
+
+* add items to the store they were last bought at ([#12](https://github.com/alex-zwingli/plan-to-eat-mcp/issues/12)) ([175208d](https://github.com/alex-zwingli/plan-to-eat-mcp/commit/175208d977cd97c54d92a7553310b4d45315af1e))
+
 ## [0.7.1](https://github.com/alex-zwingli/plan-to-eat-mcp/compare/v0.7.0...v0.7.1) (2026-09-08)
 
 
