@@ -1,0 +1,34 @@
+# Build + checks for pull requests, including release-please's Release PR.
+# Publishing lives in release.yml; this workflow never touches the registry.
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # Lower bound is package.json's engines field; upper is what release.yml
+        # publishes with.
+        node-version: ['18', '24']
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      # `npm test` needs live Plan to Eat credentials, so CI runs the offline
+      # docs/registry drift check instead.
+      - run: npm run check:docs

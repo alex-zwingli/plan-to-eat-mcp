@@ -5,11 +5,13 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "plan-to-eat": "./dist/cli/main.js",
-    "plan-to-eat-mcp": "./dist/mcp/server.js"
+    "plan-to-eat": "dist/cli/main.js",
+    "plan-to-eat-mcp": "dist/mcp/server.js"
   },
   "files": [
-    "dist",
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "CHANGELOG.md",
     "README.md",
     "LICENSE"
   ],
@@ -37,7 +39,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/alex-zwingli/plan-to-eat-mcp.git"
+    "url": "git+https://github.com/alex-zwingli/plan-to-eat-mcp.git"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
@@ -51,5 +53,17 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "type": "commonjs",
+  "homepage": "https://github.com/alex-zwingli/plan-to-eat-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/alex-zwingli/plan-to-eat-mcp/issues"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
   }
 }

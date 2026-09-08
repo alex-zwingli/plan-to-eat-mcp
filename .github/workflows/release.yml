@@ -1,0 +1,72 @@
+# Release automation.
+#
+# Every push to main runs release-please, which reads the Conventional Commit
+# messages since the last release and keeps an open "Release PR" containing the
+# version bump and CHANGELOG entry. Nothing publishes while that PR sits open.
+#
+# Merging the Release PR is the release: release-please tags it, cuts a GitHub
+# Release, and the publish job below pushes it to npm.
+#
+# Auth is npm trusted publishing (OIDC) — no NPM_TOKEN secret. The trusted
+# publisher is configured on npmjs.com against this repo + workflow filename,
+# so renaming this file breaks publishing until it's updated there too.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write # tag + create the GitHub Release
+  pull-requests: write # open/update the Release PR
+  id-token: write # mint the OIDC token npm authenticates with
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+
+      # Everything below runs only on the push that MERGED a Release PR.
+      # Ordinary commits to main stop here, having only refreshed the PR.
+      - uses: actions/checkout@v6
+        if: ${{ steps.release.outputs.release_created == 'true' }}
+
+      - uses: actions/setup-node@v6
+        if: ${{ steps.release.outputs.release_created == 'true' }}
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false # release builds should never use a cache
+
+      # Trusted publishing needs npm >= 11.5.1; pin forward rather than trust
+      # whatever the runner image happens to ship.
+      - run: npm install -g npm@latest
+        if: ${{ steps.release.outputs.release_created == 'true' }}
+
+      - run: npm ci
+        if: ${{ steps.release.outputs.release_created == 'true' }}
+
+      - run: npm run build
+        if: ${{ steps.release.outputs.release_created == 'true' }}
+
+      # `npm test` needs live Plan to Eat credentials, so the release gate is
+      # the offline docs/registry drift check instead.
+      - run: npm run check:docs
+        if: ${{ steps.release.outputs.release_created == 'true' }}
+
+      - run: npm publish
+        if: ${{ steps.release.outputs.release_created == 'true' }}
+
+      - name: Summary
+        if: ${{ steps.release.outputs.release_created == 'true' }}
+        run: |
+          echo "Published \`plan-to-eat-mcp@${{ steps.release.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Release: ${{ steps.release.outputs.html_url }}" >> "$GITHUB_STEP_SUMMARY"
