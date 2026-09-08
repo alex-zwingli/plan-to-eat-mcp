@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.3](https://github.com/alex-zwingli/plan-to-eat-mcp/compare/v0.7.2...v0.7.3) (2026-09-08)
+
+
+### Bug Fixes
+
+* pin every npm install command in the skills ([#14](https://github.com/alex-zwingli/plan-to-eat-mcp/issues/14)) ([3ece544](https://github.com/alex-zwingli/plan-to-eat-mcp/commit/3ece5447c82d122ed12cdb01f51c88f380a8b0c9))
+
 ## [0.7.2](https://github.com/alex-zwingli/plan-to-eat-mcp/compare/v0.7.1...v0.7.2) (2026-09-08)
 
 

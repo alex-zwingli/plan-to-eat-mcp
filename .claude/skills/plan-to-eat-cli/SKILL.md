@@ -1,7 +1,7 @@
 ---
 name: plan-to-eat-cli
 description: Use when the user wants to interact with Plan to Eat (plantoeat.com) — meal plan, recipes, planner notes/ingredients/leftovers, freezer, shopping list — and the `plan-to-eat` CLI is available but the plan-to-eat MCP server is NOT connected. Same capabilities as the MCP server, driven through the shell. Triggers on "what's on my meal plan", "plan X for Wednesday dinner", "add a note to Tuesday breakfast", "move dinner to Friday", "freeze leftovers", "what's in the freezer", "what's on my shopping list", "add milk to the shopping list" — when those must be answered with shell commands.
-version: 0.7.2 # x-release-please-version
+version: 0.7.3 # x-release-please-version
 metadata:
   openclaw:
     requires:
@@ -49,14 +49,14 @@ plan-to-eat --version
 1. **Run it without installing.** The CLI ships in the npm package and needs Node 18+:
 
    ```bash
-   npx -y -p plan-to-eat-mcp@0.7.2 plan-to-eat --version # x-release-please-version
+   npx -y -p plan-to-eat-mcp@0.7.3 plan-to-eat --version # x-release-please-version
    ```
 
    Note the `-p`. The package exposes two bins, and the one named `plan-to-eat-mcp` — what plain `npx plan-to-eat-mcp` resolves to — is the **MCP server**, which will sit and wait on stdio. `-p plan-to-eat-mcp plan-to-eat` is what selects the CLI. If this works, prefix every command in this skill the same way.
 2. **Install it properly.** Faster than `npx` per call, and puts `plan-to-eat` on `PATH`. **Show the user this rather than running it yourself** — it writes outside the working directory:
 
    ```bash
-   npm i -g plan-to-eat-mcp@0.7.2 # x-release-please-version
+   npm i -g plan-to-eat-mcp@0.7.3 # x-release-please-version
    ```
 3. **Working from a clone?** `node <repo>/dist/cli/main.js --version`. If `dist/` is missing, the build step was skipped — `npm install && npm run build` in the repo, then retry.
 4. **Node missing entirely** (`node --version` fails) — stop and tell the user; don't install a runtime for them.
