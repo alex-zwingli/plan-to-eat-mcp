@@ -387,7 +387,7 @@ export const tools: ToolDef[] = [
   defineTool({
     name: 'add_shopping_list_items',
     group: 'shopping',
-    description: "Add items to the shopping list. Only `title` is required per item. Leave `category_id` out and Plan to Eat guesses the aisle; leave `store_id` out and it reuses the store last chosen for that item. Returns the lines that were created.",
+    description: "Add items to the shopping list. Only `title` is required per item. Leave `category_id` out and Plan to Eat guesses the aisle; leave `store_id` out and the item goes to the store it was last bought at, falling back to the default store if it's new. Returns the lines that were created.",
     input: { items: z.array(shoppingItemShape).min(1) },
     columns: SHOPPING_COLUMNS,
     run: (pte, { items }) => pte.addShoppingListItems(items as ShoppingListItemInput[]),
