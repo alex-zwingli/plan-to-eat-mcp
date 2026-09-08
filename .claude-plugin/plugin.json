@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "plan-to-eat",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Read and write your Plan to Eat (plantoeat.com) recipe book, meal planner, freezer, and shopping list — over MCP or the plan-to-eat CLI.",
   "author": {
     "name": "Alex Zwingli",
