@@ -49,7 +49,7 @@ plan-to-eat --version
 1. **Run it without installing.** The CLI ships in the npm package and needs Node 18+:
 
    ```bash
-   npx -y -p plan-to-eat-mcp plan-to-eat --version
+   npx -y -p plan-to-eat-mcp@0.7.0 plan-to-eat --version # x-release-please-version
    ```
 
    Note the `-p`. The package exposes two bins, and the one named `plan-to-eat-mcp` — what plain `npx plan-to-eat-mcp` resolves to — is the **MCP server**, which will sit and wait on stdio. `-p plan-to-eat-mcp plan-to-eat` is what selects the CLI. If this works, prefix every command in this skill the same way.
@@ -140,10 +140,18 @@ Resolving a recipe by name is the usual first step. Filter the catalog rather
 than eyeballing it:
 
 ```bash
-plan-to-eat list-recipes --json | jq -r '.[] | select(.title|test("lasagna";"i")) | "\(.id)\t\(.title)"'
+plan-to-eat list-recipes --json \
+  | jq -r --arg q 'lasagna' '.[] | select(.title|ascii_downcase|contains($q|ascii_downcase)) | "\(.id)\t\(.title)"'
 ```
 
 If `jq` isn't available, pipe to `node -e` or read the JSON yourself.
+
+**Pass the search term with `--arg`, never inside the filter.** `--arg` hands
+jq the value as data, so a title with regex characters or an apostrophe is
+matched literally instead of reparsed. Interpolating it into `test("...")`
+silently matches the wrong thing — searching `Chicken (Spicy)` as a regex finds
+"Chicken Spicy Wings" and misses the recipe you meant — and a title like
+`Mom's Chili` breaks out of the shell quoting entirely.
 
 ### "What's on the meal plan this week?"
 ```bash
@@ -242,7 +250,8 @@ list-stores` (aisles: `plan-to-eat list-grocery-categories`).
 
 ### "Move the almonds to Costco" / "make it two jars"
 ```bash
-plan-to-eat get-shopping-list --json | jq '.[] | select(.title|test("almond";"i")) | .item_ids'
+plan-to-eat get-shopping-list --json \
+  | jq --arg q 'almond' '.[] | select(.title|ascii_downcase|contains($q|ascii_downcase)) | .item_ids'
 plan-to-eat update-shopping-list-items --item_ids '[511232505]' --store_id 138079
 plan-to-eat update-shopping-list-items --item_ids '[511232505]' --amount 2 --unit jars
 ```
@@ -265,6 +274,11 @@ plan-to-eat delete-planner-event <id> --json
 
 ## Gotchas
 
+- **Never interpolate the user's text into a command string.** Titles, notes and
+  ingredient lines are free text and routinely contain quotes, parentheses and
+  `&`. Pass them as separate quoted arguments to `plan-to-eat`, and as `--arg`
+  values to `jq`. This is also why the skill uses `contains` rather than
+  `test` — a literal substring match has no metacharacters to get wrong.
 - **`section` comes back as `supper` on some accounts.** Plan to Eat normalizes
   to a per-account preference. Always *send* `dinner`; treat `supper` as the
   same slot when reading.
