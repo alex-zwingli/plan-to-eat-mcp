@@ -56,10 +56,17 @@ plan-to-eat --version
 2. **Install it properly.** Faster than `npx` per call, and puts `plan-to-eat` on `PATH`. **Show the user this rather than running it yourself** — it writes outside the working directory:
 
    ```bash
-   npm i -g plan-to-eat-mcp
+   npm i -g plan-to-eat-mcp@0.7.2 # x-release-please-version
    ```
 3. **Working from a clone?** `node <repo>/dist/cli/main.js --version`. If `dist/` is missing, the build step was skipped — `npm install && npm run build` in the repo, then retry.
 4. **Node missing entirely** (`node --version` fails) — stop and tell the user; don't install a runtime for them.
+
+Keep the version pinned in whichever of these you pass on. `npx -y` and a bare
+`npm i -g` run whatever the registry serves at that moment, so an unpinned
+command picks up every future publish silently. Releases are published from CI
+with npm trusted publishing, so each tarball carries a SLSA provenance
+attestation binding it to the source repository and the commit it was built
+from; `npm audit signatures` checks the copy that actually got installed.
 
 **"Missing PLAN_TO_EAT_USERNAME and/or PLAN_TO_EAT_PASSWORD"** — credentials aren't set. They come from the environment or a `.env` in the working directory:
 

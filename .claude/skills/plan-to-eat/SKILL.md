@@ -41,13 +41,27 @@ The server is published to npm as [`plan-to-eat-mcp`](https://www.npmjs.com/pack
 
 ```bash
 # Claude Code:
-claude mcp add plan-to-eat -- npx -y plan-to-eat-mcp
+claude mcp add plan-to-eat -- npx -y plan-to-eat-mcp@0.7.2 # x-release-please-version
 
 # Claude Desktop, Cursor, Windsurf, Cline, Zed — the same stdio block:
-#   "command": "npx", "args": ["-y", "plan-to-eat-mcp"]
+#   "command": "npx", "args": ["-y", "plan-to-eat-mcp@0.7.2"] # x-release-please-version
+
+# To skip the per-launch npx resolve, install once and use the
+# `plan-to-eat-mcp` bin as the command with no args:
+npm i -g plan-to-eat-mcp@0.7.2 # x-release-please-version
 ```
 
-No clone or build step. To pin a version, use `plan-to-eat-mcp@<version>`; to avoid the per-launch npx resolve, `npm i -g plan-to-eat-mcp` and use the `plan-to-eat-mcp` bin as the command with no args.
+No clone or build step. Keep the version pinned when you pass these on: `npx -y`
+runs whatever the registry serves at that moment, so an unpinned command picks
+up every future publish silently.
+
+Releases are published from CI with npm trusted publishing, so every tarball
+carries a SLSA provenance attestation binding it to this repository and the
+commit it was built from. The user can verify what they installed:
+
+```bash
+npm audit signatures
+```
 
 Claude Code users who want the skills *and* the server together can instead install the plugin from a clone:
 
