@@ -4,9 +4,12 @@
 // up in both surfaces with the same name, schema, and description.
 
 import { z } from 'zod';
-import type { PlanToEat, PlannerSection, RecipeWritable } from './client.js';
+import type {
+  PlanToEat, PlannerSection, RecipeWritable, ShoppingListItemInput,
+} from './client.js';
 
-export type ToolGroup = 'recipes' | 'lookup' | 'planner-read' | 'planner-write' | 'freezer' | 'other';
+export type ToolGroup =
+  | 'recipes' | 'lookup' | 'planner-read' | 'planner-write' | 'freezer' | 'shopping' | 'other';
 
 export const TOOL_GROUP_LABELS: Record<ToolGroup, string> = {
   recipes: 'Recipes',
@@ -14,6 +17,7 @@ export const TOOL_GROUP_LABELS: Record<ToolGroup, string> = {
   'planner-read': 'Planner (read)',
   'planner-write': 'Planner (write)',
   freezer: 'Freezer',
+  shopping: 'Shopping list',
   other: 'Other',
 };
 
@@ -88,6 +92,24 @@ const recipeWritable = {
   ingredients: z.array(ingredientShape).optional()
     .describe('Maps to recipe_ingredients_attributes on the wire'),
 };
+
+const shoppingItemShape = z.object({
+  title: z.string().describe('What to buy, e.g. "sliced almonds"'),
+  amount: z.string().optional().describe('Quantity as text, e.g. "2" or "1/2"'),
+  unit: z.string().optional().describe('e.g. "cup", "lb", "can"'),
+  note: z.string().optional().describe('Free-text note on the line, e.g. "get the low-sodium one"'),
+  category_id: z.number().int().optional()
+    .describe('Aisle, from list_grocery_categories. Omit and Plan to Eat picks one.'),
+  store_id: z.number().int().optional()
+    .describe('Store, from list_stores. Omit to reuse the store last used for this item.'),
+});
+
+// A shopping list line is addressed by `item_ids`, not a scalar id: Plan to Eat
+// merges duplicate ingredients into one line that keeps every underlying id.
+const SHOPPING_COLUMNS = [
+  'item_ids', 'amount', 'unit', 'title', 'store_title', 'grocery_category_title',
+  'extra_notes', 'recipe_ids',
+];
 
 const sectionSchema = z.enum(['breakfast', 'lunch', 'dinner', 'snacks']);
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD');
@@ -172,6 +194,22 @@ export const tools: ToolDef[] = [
     input: {},
     columns: ['id', 'title', 'owned'],
     run: (pte) => pte.listTags(),
+  }),
+  defineTool({
+    name: 'list_stores',
+    group: 'lookup',
+    description: "List the user's grocery stores. Use the ids as `store_id` when adding or re-filing shopping list items.",
+    input: {},
+    columns: ['id', 'title'],
+    run: (pte) => pte.listStores(),
+  }),
+  defineTool({
+    name: 'list_grocery_categories',
+    group: 'lookup',
+    description: "List the user's grocery aisles (Produce, Dairy, ...). Use the ids as `category_id` on shopping list items.",
+    input: {},
+    columns: ['id', 'title', 'position'],
+    run: (pte) => pte.listGroceryCategories(),
   }),
 
   // -- Planner: read ----------------------------------------------------
@@ -337,6 +375,61 @@ export const tools: ToolDef[] = [
     run: (pte, { id }) => pte.deleteFrozenRecipe(id),
   }),
 
+  // -- Shopping list ----------------------------------------------------
+  defineTool({
+    name: 'get_shopping_list',
+    group: 'shopping',
+    description: "Read the shopping list. Each line gives what to buy plus the store it's assigned to (`store_title` / `store_id`, where a null `store_id` means the account's default store) and the aisle it's filed under (`grocery_category_title` / `grocery_category_id`). `item_ids` is the handle for updating or removing that line — Plan to Eat merges duplicate ingredients into one line, so it's an array. `recipe_ids` shows which planned recipes pulled the item in.",
+    input: {},
+    columns: SHOPPING_COLUMNS,
+    run: (pte) => pte.getShoppingListItems(),
+  }),
+  defineTool({
+    name: 'add_shopping_list_items',
+    group: 'shopping',
+    description: "Add items to the shopping list. Only `title` is required per item. Leave `category_id` out and Plan to Eat guesses the aisle; leave `store_id` out and it reuses the store last chosen for that item. Returns the lines that were created.",
+    input: { items: z.array(shoppingItemShape).min(1) },
+    columns: SHOPPING_COLUMNS,
+    run: (pte, { items }) => pte.addShoppingListItems(items as ShoppingListItemInput[]),
+  }),
+  defineTool({
+    name: 'update_shopping_list_items',
+    group: 'shopping',
+    description: "Change shopping list lines. Pass `item_ids` from get_shopping_list — naming any id of a line affects that whole line. Moving items to a different store or aisle (`store_id` / `category_id` on their own) works across as many lines as you like; editing the text (`title`, `amount`, `unit`, `note`) applies to one line at a time, and collapses a merged line into a single row keeping its combined quantity. Returns the lines as they now stand, so re-read `item_ids` from the result rather than reusing the ones you sent.",
+    input: {
+      item_ids: z.array(z.number().int()).min(1)
+        .describe('Ids from a line\'s `item_ids` in get_shopping_list.'),
+      title: z.string().optional(),
+      amount: z.string().optional(),
+      unit: z.string().optional(),
+      note: z.string().optional().describe('Replaces the line\'s free-text note.'),
+      category_id: z.number().int().optional().describe('Aisle, from list_grocery_categories.'),
+      store_id: z.number().int().optional().describe('Store, from list_stores.'),
+    },
+    columns: SHOPPING_COLUMNS,
+    run: (pte, args) => pte.updateShoppingListItems(args),
+  }),
+  defineTool({
+    name: 'remove_shopping_list_items',
+    group: 'shopping',
+    description: "Remove lines from the shopping list. This is a soft delete, the same one the app does, and restore_shopping_list_items undoes it — but nothing can list removed lines, so keep the item_ids around if the removal might need undoing.",
+    input: {
+      item_ids: z.array(z.number().int()).min(1)
+        .describe('The `item_ids` array from get_shopping_list.'),
+    },
+    run: (pte, { item_ids }) => ok(pte.deleteShoppingListItems(item_ids)),
+  }),
+  defineTool({
+    name: 'restore_shopping_list_items',
+    group: 'shopping',
+    description: 'Put previously removed shopping list lines back on the list. Takes the item_ids the line had before it was removed.',
+    input: {
+      item_ids: z.array(z.number().int()).min(1)
+        .describe('The `item_ids` the line had before remove_shopping_list_items took it off.'),
+    },
+    run: (pte, { item_ids }) => ok(pte.restoreShoppingListItems(item_ids)),
+  }),
+
   // -- Other ------------------------------------------------------------
   defineTool({
     name: 'list_menus',
@@ -345,13 +438,6 @@ export const tools: ToolDef[] = [
     input: {},
     columns: ['id', 'title', 'date_from', 'date_to', 'event_count', 'day_count'],
     run: (pte) => pte.listMenus(),
-  }),
-  defineTool({
-    name: 'get_shopping_list',
-    group: 'other',
-    description: 'Get the current shopping list with sync metadata.',
-    input: {},
-    run: (pte) => pte.getShoppingList(),
   }),
   defineTool({
     name: 'list_friends',

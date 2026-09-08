@@ -3,11 +3,12 @@
 Every tool exposed by the `plan-to-eat-mcp` server. Inputs use the JSON-Schema shape MCP hosts already understand; types here are abbreviated.
 
 - [Recipes](#recipes) — list, get, create, update, delete
-- [Lookup tables](#lookup-tables) — courses, cuisines, main ingredients, tags
+- [Lookup tables](#lookup-tables) — courses, cuisines, main ingredients, tags, stores, grocery categories
 - [Planner: read](#planner-read) — view events, get a week's plan
 - [Planner: write](#planner-write) — add/move/edit/delete planner events, reorder, leftovers
 - [Freezer](#freezer) — list / add / consume frozen portions
-- [Other](#other) — shopping list, friends, menus, counts, planner options
+- [Shopping list](#shopping-list) — read the list, add / update / remove items
+- [Other](#other) — friends, menus, counts, planner options
 
 ---
 
@@ -55,7 +56,7 @@ Delete a recipe by id.
 
 ## Lookup tables
 
-Each returns `[{ id, title, owned }]`. Use to map human-friendly names to the integer IDs that recipe-write endpoints want.
+Small tables that map human-friendly names to the integer ids the write endpoints want. The recipe ones return `[{ id, title, owned }]`; the shopping list ones are noted below.
 
 ### `list_courses`
 Appetizers, Main Course, Dessert, etc.
@@ -68,6 +69,12 @@ Beef, Chicken, Fish, Pasta, etc.
 
 ### `list_tags`
 Free-form tags the user has applied across their recipe book.
+
+### `list_stores`
+The user's grocery stores — `[{ id, title }]`. These ids are what `store_id` means on a shopping list item.
+
+### `list_grocery_categories`
+The user's grocery aisles: Produce, Dairy, Frozen, etc. — `[{ id, title, position }]`. These ids are what `category_id` means on a shopping list item.
 
 ---
 
@@ -195,6 +202,60 @@ Mark a frozen entry as consumed (eaten or thrown out).
 
 ---
 
+## Shopping list
+
+Reads come from the JSON API. Writes don't have a JSON equivalent, so they go through the same form-encoded `/shopping_lists/update` controller the web app posts to — one endpoint that adds, re-files, edits, and removes depending on which keys it's sent. The client hides that; it also scrapes the account's shopping list id off the list page once per session, since nothing exposes it as JSON.
+
+**Lines, not items.** Plan to Eat merges duplicate ingredients — the same garlic pulled in by three planned recipes — into one line. So a line has no scalar id: it has an `item_ids` array holding every underlying row. Pass that array back to update or remove the line.
+
+### `get_shopping_list`
+Read the shopping list.
+
+- **Input**: none
+- **Returns**: `ShoppingListItem[]` — `{ item_ids, title, amount, unit, extra_notes, store_id, store_title, grocery_category_id, grocery_category_title, recipe_ids, event_ids, purchased, ... }`
+- **Notes**:
+  - **Store**: `store_title` always names the store; `store_id` is `null` for the account's default store (the one with the heart in the app) and a `list_stores` id otherwise.
+  - **Aisle**: `grocery_category_title` is resolved for you from `list_grocery_categories`; both it and `grocery_category_id` are `null` when Plan to Eat couldn't guess an aisle.
+  - `recipe_ids` is which planned recipes pulled the item onto the list; a line with an empty `recipe_ids` was added by hand.
+  - Removed lines are never returned — see `remove_shopping_list_items`.
+
+### `add_shopping_list_items`
+Add items to the shopping list.
+
+- **Input**: `{ items: { title, amount?, unit?, note?, category_id?, store_id? }[] }` — only `title` is required per item
+- **Returns**: the created `ShoppingListItem[]`
+- **Notes**:
+  - Omit `category_id` and the client asks Plan to Eat's `/recommend_category` for the aisle, the same guess the app's add-items dialog makes as you type. It comes back empty for titles it doesn't recognise, which leaves the line uncategorized.
+  - Omit `store_id` and the server reuses whichever store you last chose for that item ("Auto-select" in the dialog).
+  - `note` is the line's own free-text note; it comes back as `extra_notes`.
+  - The endpoint returns nothing useful, so created lines are recovered by diffing item ids across the write.
+
+### `update_shopping_list_items`
+Change shopping list lines.
+
+- **Input**: `{ item_ids: number[], title?, amount?, unit?, note?, category_id?, store_id? }`
+- **Returns**: the affected `ShoppingListItem[]`, as they now stand
+- **Notes**:
+  - **Re-filing** — `store_id` and/or `category_id` on their own — applies to as many lines as you pass at once. This is the app's drag-to-a-different-store path.
+  - **Editing text** — any of `title`, `amount`, `unit`, `note` — is one line at a time; ids spanning two lines are refused. The endpoint wants the values as they were alongside the new ones (it diffs them to decide what changed), so the client reads the line back first and fills in the `_start` half itself.
+  - **Naming one id of a merged line affects the whole line.** The client widens whatever you pass to the full group before writing, which is what the app's edit dialog does — it posts the group's entire id list and never a subset. Passing a subset would otherwise rename half a line and split it in two.
+  - **A text edit consolidates a merged line into a single row**, keeping the combined quantity (two rows of 1 box and 2 box become one row of 3 box). So the ids you sent may not all still exist afterwards — take `item_ids` from the returned line rather than reusing what you sent.
+
+### `remove_shopping_list_items`
+Remove lines from the shopping list.
+
+- **Input**: `{ item_ids: number[] }`
+- **Returns**: `{ ok: true }`
+- **Notes**: A soft delete, same as the app's — `restore_shopping_list_items` undoes it. But nothing lists removed lines (the JSON API drops them, even with the app's "Hide Removed" toggle off), so keep the `item_ids` if the removal might need undoing.
+
+### `restore_shopping_list_items`
+Put removed lines back on the list.
+
+- **Input**: `{ item_ids: number[] }` — the ids the line had before it was removed
+- **Returns**: `{ ok: true }`
+
+---
+
 ## Other
 
 ### `list_menus`
@@ -202,12 +263,6 @@ List saved menus (collections of planned meals).
 
 - **Input**: none
 - **Returns**: `Menu[]`
-
-### `get_shopping_list`
-Get the current shopping list with sync metadata.
-
-- **Input**: none
-- **Returns**: `{ updated_items: [...], last_sync_time: string | null }`
 
 ### `list_friends`
 List Plan to Eat friends.

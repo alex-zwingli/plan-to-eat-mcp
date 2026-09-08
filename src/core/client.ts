@@ -161,6 +161,55 @@ export interface ShoppingList {
   last_sync_time: string | null;
 }
 
+/**
+ * One line on the shopping list. Plan to Eat merges duplicates (the same
+ * ingredient pulled in by three recipes) into a single line, so `item_ids`
+ * holds every underlying row id — that array is the handle for updates and
+ * deletes, not a scalar `id`.
+ */
+export interface ShoppingListItem {
+  title: string;
+  amount: string;
+  amount_float: number;
+  unit: string;
+  quantity: string;
+  /** Per-ingredient note carried over from a recipe (e.g. "finely chopped"). */
+  note: string | null;
+  /** Free-text note you attach to the shopping list line itself. */
+  extra_notes: string;
+  /** Null when Plan to Eat couldn't guess an aisle for the item. */
+  grocery_category_id: number | null;
+  /** Filled in by `getShoppingListItems()` from `/api/v1/grocery_categories`. */
+  grocery_category_title?: string | null;
+  /** `null` means the account's default store — `store_title` still names it. */
+  store_id: number | null;
+  store_title: string;
+  item_ids: number[];
+  event_ids: number[];
+  recipe_ids: number[];
+  orphaned_recipe_ids: number[];
+  titles: string[];
+  purchased: string | null;
+  /** Always false in practice — the API drops removed lines rather than flagging them. */
+  removed: boolean;
+  [key: string]: unknown;
+}
+
+export interface Store { id: number; title: string }
+export interface GroceryCategory { id: number; title: string; position: number | null }
+
+/** A new shopping list line. Only `title` is required. */
+export interface ShoppingListItemInput {
+  title: string;
+  amount?: string;
+  unit?: string;
+  note?: string;
+  /** From `listGroceryCategories()`. Omit to let Plan to Eat guess the aisle. */
+  category_id?: number;
+  /** From `listStores()`. Omit to reuse the store last chosen for this item. */
+  store_id?: number;
+}
+
 export interface Counts { friends: number; queued: number; frozen: number }
 
 export type PlannerSection = 'breakfast' | 'lunch' | 'dinner' | 'snacks';
@@ -182,6 +231,10 @@ export interface FrozenRecipe {
 
 export interface Session { cookies: Record<string, string> }
 
+type FormValue = string | number | boolean | undefined | null;
+/** Object form for ordinary bodies; pair array when a key must repeat. */
+type FormBody = Record<string, FormValue> | [string, FormValue][];
+
 export class HttpError extends Error {
   status: number;
   body: unknown;
@@ -196,6 +249,7 @@ export class PlanToEat {
   private cookies: Record<string, string> = {};
   private csrf: string | null = null;
   private creds: { email: string; password: string } | null = null;
+  private shoppingListId: number | null = null;
 
   // ---- internals ----
 
@@ -275,19 +329,24 @@ export class PlanToEat {
     return parsed as T;
   }
 
-  // Form-encoded POST. The /planner/* endpoints use this style: form body in,
-  // empty `text/javascript` body out (server-side state mutation only — the UI
-  // re-fetches separately).
+  // Form-encoded POST. The /planner/* and /shopping_lists/* endpoints use this
+  // style: form body in, and a body we don't need out — either empty
+  // `text/javascript` (planner) or a re-render of the page (shopping list).
+  // Either way the UI re-fetches state separately, so we do the same.
+  //
+  // Pass an array of pairs rather than an object when a key has to repeat:
+  // Rails reads `ingredients[][title]` as an array of hashes, starting a new
+  // hash each time a key it has already seen comes round again.
   private async form(
     method: string,
     path: string,
-    body: Record<string, string | number | boolean | undefined | null>,
+    body: FormBody,
     retried = false,
-  ): Promise<void> {
+  ): Promise<string> {
     const params = new URLSearchParams();
-    for (const [k, v] of Object.entries(body)) {
+    for (const [k, v] of (Array.isArray(body) ? body : Object.entries(body))) {
       if (v === undefined || v === null) continue;
-      params.set(k, String(v));
+      params.append(k, String(v));
     }
     const headers: Record<string, string> = {
       'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
@@ -306,7 +365,7 @@ export class PlanToEat {
       const text = await res.text().catch(() => '');
       throw new HttpError(`${method} ${path} failed: ${res.status}`, res.status, text);
     }
-    await res.text().catch(() => '');
+    return res.text().catch(() => '');
   }
 
   // Translate the friendly `ingredients` field to the Rails wire name.
@@ -350,6 +409,7 @@ export class PlanToEat {
 
     if (res.status === 302) {
       this.csrf = null;
+      this.shoppingListId = null;
       this.creds = { email, password };
       return;
     }
@@ -365,6 +425,7 @@ export class PlanToEat {
   importSession(session: Session): void {
     this.cookies = { ...session.cookies };
     this.csrf = null;
+    this.shoppingListId = null;
   }
 
   // ---- recipes ----
@@ -406,14 +467,237 @@ export class PlanToEat {
   listMainIngredients(): Promise<MainIngredient[]>  { return this.json('GET', '/api/v1/main_ingredients'); }
   listTags():            Promise<Tag[]>             { return this.json('GET', '/api/v1/tags'); }
 
-  // ---- planner / shopping list ----
+  // ---- planner / misc reads ----
   listEvents():     Promise<PlannerEvent[]> { return this.json('GET', '/api/v1/events'); }
-  getShoppingList(): Promise<ShoppingList>  { return this.json('GET', '/api/v1/shopping_list'); }
   listMenus():      Promise<Menu[]>         { return this.json('GET', '/api/v1/menus'); }
   listFriends():    Promise<Friend[]>       { return this.json('GET', '/api/v1/friends'); }
 
   /** `{ friends, queued, frozen }` */
   getCounts(): Promise<Counts> { return this.json('GET', '/recipes/counts/'); }
+
+  // ---- shopping list ----
+  //
+  // Reads come from /api/v1; the writes have no /api/v1 equivalent, so they go
+  // through the same form-encoded `/shopping_lists/update` controller the web
+  // UI posts to. That one endpoint does four different jobs depending on which
+  // keys you send:
+  //
+  //   ingredients[][...]                      add new lines
+  //   update_items= + category_id/store_id    re-file existing lines
+  //   update_items= + <field>_start/<field>   edit one line's text
+  //   items=        + delete_items/undelete_items   remove / restore lines
+  //
+  // All four want `shopping_list_id`, which isn't exposed as JSON anywhere —
+  // the UI reads it off a data attribute on the page, so we scrape it once.
+
+  /** Sync metadata only (`{ updated_items, last_sync_time }`), not the list itself. */
+  getShoppingList(): Promise<ShoppingList> { return this.json('GET', '/api/v1/shopping_list'); }
+
+  /** The user's grocery stores, for `store_id` on shopping list items. */
+  listStores(): Promise<Store[]> { return this.json('GET', '/api/v1/stores'); }
+
+  /** The user's grocery aisles, for `category_id` on shopping list items. */
+  listGroceryCategories(): Promise<GroceryCategory[]> {
+    return this.json('GET', '/api/v1/grocery_categories');
+  }
+
+  /** Scraped once per session off the shopping list page, then cached. */
+  private async getShoppingListId(): Promise<number> {
+    if (this.shoppingListId !== null) return this.shoppingListId;
+    const res = await this.request('GET', '/shopping_lists', { asJson: false });
+    const html = await res.text();
+    const m = html.match(/data-shopping-list-id="(\d+)"/);
+    if (!m) throw new Error('Could not find data-shopping-list-id on /shopping_lists');
+    this.shoppingListId = Number(m[1]);
+    return this.shoppingListId;
+  }
+
+  private rawShoppingListItems(): Promise<ShoppingListItem[]> {
+    return this.json<ShoppingListItem[]>('GET', '/api/v1/shopping_list/items');
+  }
+
+  /**
+   * The shopping list itself. Each line carries the store it's assigned to
+   * (`store_id` / `store_title`) and the aisle it's filed under
+   * (`grocery_category_id`, plus the `grocery_category_title` we resolve
+   * here).
+   *
+   * Removed lines never come back from this endpoint — not even with the
+   * app's "Hide Removed" toggle off — so there's no way to browse them.
+   */
+  async getShoppingListItems(): Promise<ShoppingListItem[]> {
+    const [items, categories] = await Promise.all([
+      this.rawShoppingListItems(),
+      this.listGroceryCategories(),
+    ]);
+    const categoryTitle = new Map(categories.map((c) => [c.id, c.title]));
+    for (const item of items) {
+      item.grocery_category_title = item.grocery_category_id === null
+        ? null
+        : categoryTitle.get(item.grocery_category_id) ?? null;
+    }
+    return items;
+  }
+
+  /**
+   * Plan to Eat's guess at which aisle an item belongs in — "Flour" gives back
+   * `{ category_title: 'Dry Goods', category_id: 349 }`. The add-items dialog
+   * calls this per row as you type; we call it for you when you add an item
+   * without naming a category.
+   */
+  async recommendCategory(
+    title: string,
+  ): Promise<{ title: string; category_title: string; category_id: number } | null> {
+    const body = await this.form('POST', '/recommend_category', { title });
+    try {
+      const [t, categoryTitle, id] = JSON.parse(body) as [string, string, number];
+      return typeof id === 'number' ? { title: t, category_title: categoryTitle, category_id: id } : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Add lines to the shopping list. Only `title` is required per item; omit
+   * `category_id` and we ask `/recommend_category` for the aisle, omit
+   * `store_id` and the server reuses whichever store you last picked for that
+   * item. Returns the lines that appeared, recovered by diffing item ids.
+   */
+  async addShoppingListItems(items: ShoppingListItemInput[]): Promise<ShoppingListItem[]> {
+    if (items.length === 0) return [];
+    const shopping_list_id = await this.getShoppingListId();
+    const before = new Set((await this.rawShoppingListItems()).flatMap((i) => i.item_ids));
+
+    const pairs: [string, FormValue][] = [['shopping_list_id', shopping_list_id]];
+    // "Auto-select" in the dialog: fill in each item's last-used store. Only
+    // bites on rows that don't name one (those carry store 0 = default store).
+    if (items.some((i) => i.store_id === undefined)) pairs.push(['autoStore', 1]);
+    for (const item of items) {
+      const category = item.category_id ?? (await this.recommendCategory(item.title))?.category_id ?? '';
+      // Key order matters here — see the note on form().
+      pairs.push(['ingredients[][amount]', item.amount ?? '']);
+      pairs.push(['ingredients[][unit]', item.unit ?? '']);
+      pairs.push(['ingredients[][title]', item.title]);
+      pairs.push(['ingredients[][note]', item.note ?? '']);
+      pairs.push(['ingredients[][category]', category]);
+      pairs.push(['ingredients[][store]', item.store_id ?? 0]);
+    }
+    await this.form('POST', '/shopping_lists/update', pairs);
+
+    const after = await this.getShoppingListItems();
+    return after.filter((i) => i.item_ids.some((id) => !before.has(id)));
+  }
+
+  /**
+   * Edit shopping list lines. Pass any of the `item_ids` from
+   * `getShoppingListItems()`.
+   *
+   * Re-filing (`category_id` / `store_id` alone) applies to as many lines as
+   * you name. Changing text (`title`, `amount`, `unit`, `note`) edits one
+   * line: the endpoint diffs the new values against the current ones, so we
+   * read the line back first and send both halves.
+   *
+   * Ids are always widened to the whole line before the write — naming one id
+   * of a merged line edits the line, matching the app, where the edit dialog
+   * posts the group's full id list and never a subset. Editing the text of a
+   * merged line makes the server consolidate it into a single row (keeping the
+   * combined quantity), so the ids you passed in may not all survive; the
+   * returned lines carry the ids that did.
+   */
+  async updateShoppingListItems(args: {
+    item_ids: number[];
+    title?: string;
+    amount?: string;
+    unit?: string;
+    note?: string;
+    category_id?: number;
+    store_id?: number;
+  }): Promise<ShoppingListItem[]> {
+    if (args.item_ids.length === 0) return [];
+    const editsText = args.title !== undefined || args.amount !== undefined
+      || args.unit !== undefined || args.note !== undefined;
+    if (!editsText && args.category_id === undefined && args.store_id === undefined) {
+      throw new Error('updateShoppingListItems: nothing to change');
+    }
+
+    const named = new Set(args.item_ids);
+    const lines = (await this.rawShoppingListItems())
+      .filter((i) => i.item_ids.some((id) => named.has(id)));
+    if (lines.length === 0) {
+      throw new Error(`No shopping list item found for item_ids ${args.item_ids.join(',')}`);
+    }
+    const shopping_list_id = await this.getShoppingListId();
+    const update_items = lines.flatMap((i) => i.item_ids).join(',');
+
+    if (!editsText) {
+      await this.form('POST', '/shopping_lists/update', {
+        update_items,
+        shopping_list_id,
+        category_id: args.category_id,
+        store_id: args.store_id,
+      });
+    } else {
+      if (lines.length > 1) {
+        throw new Error(
+          `updateShoppingListItems: ${args.title !== undefined ? 'title' : 'text'} edits apply to one `
+          + `line, but item_ids spans ${lines.length}. Edit them one at a time.`,
+        );
+      }
+      const [current] = lines;
+      // A line with `store_id: null` sits at the default store, which the form
+      // spells 0.
+      const storeStart = current.store_id ?? 0;
+      await this.form('POST', '/shopping_lists/update', [
+        ['update_items', update_items],
+        ['active', 1],
+        ['orphaned_recipe_ids', ''],
+        ['amount_start', current.amount],
+        ['amount', args.amount ?? current.amount],
+        ['unit_start', current.unit],
+        ['unit', args.unit ?? current.unit],
+        ['title_start', current.title],
+        ['title', args.title ?? current.title],
+        // An uncategorized line has no aisle; the form spells that as empty,
+        // and form() would drop a null outright.
+        ['category_id_start', current.grocery_category_id ?? ''],
+        ['category_id', args.category_id ?? current.grocery_category_id ?? ''],
+        ['store_id_start', storeStart],
+        ['store_id', args.store_id ?? storeStart],
+        ['extra_notes_start', current.extra_notes],
+        ['extra_notes', args.note ?? current.extra_notes],
+        ['shopping_list_id', shopping_list_id],
+      ]);
+    }
+
+    // Match on the widened id set: a consolidated line keeps only one of them.
+    const touched = new Set(update_items.split(',').map(Number));
+    const after = await this.getShoppingListItems();
+    return after.filter((i) => i.item_ids.some((id) => touched.has(id)));
+  }
+
+  /**
+   * Remove lines from the shopping list. This is the soft delete the UI does —
+   * `restoreShoppingListItems()` puts them back — but nothing lists removed
+   * lines, so hang on to the ids if you might want to undo.
+   */
+  async deleteShoppingListItems(item_ids: number[]): Promise<void> {
+    if (item_ids.length === 0) return;
+    await this.form('POST', '/shopping_lists/update', {
+      items: item_ids.join(','),
+      shopping_list_id: await this.getShoppingListId(),
+      delete_items: 1,
+    });
+  }
+
+  /** Undo `deleteShoppingListItems()`. */
+  async restoreShoppingListItems(item_ids: number[]): Promise<void> {
+    if (item_ids.length === 0) return;
+    await this.form('POST', '/shopping_lists/update', {
+      items: item_ids.join(','),
+      shopping_list_id: await this.getShoppingListId(),
+      undelete_items: 1,
+    });
+  }
 
   // ---- planner writes ----
   //

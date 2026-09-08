@@ -20,6 +20,11 @@
           "jsonpath": "$.packages[0].version"
         },
         {
+          "type": "json",
+          "path": ".claude-plugin/plugin.json",
+          "jsonpath": "$.version"
+        },
+        {
           "type": "generic",
           "path": ".claude/skills/plan-to-eat/SKILL.md"
         },

@@ -10,7 +10,13 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 /** Terminal display width, ignoring the fact that emoji are wide. Good enough. */
 function cell(value: unknown): string {
   if (value === null || value === undefined) return '';
-  if (Array.isArray(value)) return value.length ? `[${value.length}]` : '';
+  // Arrays of primitives (item_ids, recipe_ids) are worth reading; anything
+  // deeper just gets a count. Either way MAX_CELL keeps it in its lane.
+  if (Array.isArray(value)) {
+    if (!value.length) return '';
+    if (value.every((v) => !isPlainObject(v) && !Array.isArray(v))) return value.join(', ');
+    return `[${value.length}]`;
+  }
   if (isPlainObject(value)) return '{…}';
   const s = String(value).replace(/\s+/g, ' ');
   return s.length > MAX_CELL ? `${s.slice(0, MAX_CELL - 1)}…` : s;

@@ -67,15 +67,19 @@ you get the trial, and I get a tiny thank-you. Win/win.
 - 🔐 **Auto-auth & auto-recovery** — set your credentials once, the server
   handles login, caches the cookie session to disk, and silently re-auths
   whenever Plan to Eat invalidates it.
-- 🧰 **30 tools, all the verbs that matter** — full recipe CRUD, full
+- 🧰 **36 tools, all the verbs that matter** — full recipe CRUD, full
   meal-planner CRUD (add / move / duplicate / delete recipes, notes, and
   ingredient entries), reorder events in a slot, leftovers as a first-class
-  workflow, freezer tracking, browse courses & cuisines & tags, peek at the
-  shopping list, count what's in your queue.
+  workflow, freezer tracking, browse courses & cuisines & tags, count what's
+  in your queue.
 - 🗓️ **Real planner control** — view a week's plan with recipe titles
   pre-joined, schedule recipes on dates, attach prep notes, reschedule with
   one tool call, change servings, duplicate, search for duplicates, reorder
   same-slot events.
+- 🛒 **A shopping list you can actually work with** — read it with the store
+  and aisle each item is filed under, add items (Plan to Eat guesses the aisle
+  and reuses the store you last picked), retitle or re-quantify a line, move
+  items between stores, remove them, put them back.
 - ❄️ **Freezer tracking** — after cooking, mark N portions as frozen with
   `freeze_recipe_portions`; check what's stashed with `list_frozen_recipes`;
   consume entries when you eat them (soft-delete, history preserved).
@@ -168,7 +172,7 @@ That gives you:
 
 | Component | What it is |
 |---|---|
-| MCP server `plan-to-eat` | all 30 tools |
+| MCP server `plan-to-eat` | all 36 tools |
 | Skill `plan-to-eat` | how to *use* the MCP tools well — workflows and gotchas |
 | Skill `plan-to-eat-cli` | the same, for agents driving the CLI instead |
 
@@ -243,7 +247,7 @@ from a clone, the command is `node` with
 PLAN_TO_EAT_USERNAME=you@example.com PLAN_TO_EAT_PASSWORD=hunter2 npx -y plan-to-eat-mcp
 ```
 
-You should see `[plan-to-eat] mcp server ready on stdio (30 tools)` on stderr.
+You should see `[plan-to-eat] mcp server ready on stdio (36 tools)` on stderr.
 That's the server waiting for a client — Ctrl-C out. If instead you get a
 credentials error, fix that before wiring up a host, where the failure is
 harder to see.
@@ -333,7 +337,7 @@ $ plan-to-eat get-counts --json | jq .frozen
 
 ---
 
-## 🧰 The 30 tools
+## 🧰 The 36 tools
 
 Each is an MCP tool *and* a CLI subcommand — `add_planner_recipe` the tool is
 `plan-to-eat add-planner-recipe` in the shell. Full reference with input
@@ -380,13 +384,26 @@ schemas and return shapes: **[docs/TOOLS.md](./docs/TOOLS.md)**.
 | `freeze_recipe_portions` | Mark N portions of a cooked recipe as frozen, tied to the planner event they came from. |
 | `delete_frozen_recipe` | Mark a frozen entry as consumed (soft-delete: API zeroes count, row persists). |
 
+**Shopping list**
+
+A line is addressed by its `item_ids` array, not a scalar id — Plan to Eat
+merges duplicate ingredients into one line that keeps every underlying row id.
+
+| Tool | What it does |
+|---|---|
+| `get_shopping_list` | The list, each line with the store (`store_title`) and aisle it's filed under, and which recipes pulled it in. |
+| `add_shopping_list_items` | Add items. Only `title` required; the aisle is guessed and the store defaults to the one last used for that item. |
+| `update_shopping_list_items` | Retitle / re-quantify a line, or move any number of lines to a different store or aisle. |
+| `remove_shopping_list_items` | Take lines off the list (soft delete). |
+| `restore_shopping_list_items` | Put removed lines back. |
+
 **Lookup tables & extras**
 
 | Tool | What it does |
 |---|---|
 | `list_courses` / `list_cuisines` / `list_main_ingredients` / `list_tags` | Lookup tables. |
+| `list_stores` / `list_grocery_categories` | Your stores and grocery aisles — the ids `store_id` and `category_id` want. |
 | `list_menus` | Saved menus. |
-| `get_shopping_list` | Current shopping list with sync metadata. |
 | `list_friends` | Friends list. |
 | `get_counts` | `{ friends, queued, frozen }` from the recipe-book widget. |
 | `update_planner_options` | Set planner display preferences (timezone, start day, nutrition columns). Rarely needed. |
@@ -424,7 +441,7 @@ The client stashes credentials internally on first login so it can transparently
 re-authenticate if the cached cookies expire mid-session.
 
 The tool registry is exported too, if you want to build your own adapter over
-the same 30 capabilities:
+the same 36 capabilities:
 
 ```ts
 import { toolsByName, createSession } from 'plan-to-eat-mcp';
@@ -455,7 +472,10 @@ All paths under `https://app.plantoeat.com`.
 | GET | `/api/v1/courses`, `/cuisines`, `/main_ingredients`, `/tags` | Lookup tables. |
 | GET | `/api/v1/events` | Planner entries (calendar). Returns the entire calendar — filter by date client-side. |
 | GET | `/api/v1/menus` | Saved menus. |
-| GET | `/api/v1/shopping_list` | Shopping list with sync timestamp. |
+| GET | `/api/v1/shopping_list` | Sync metadata only (`updated_items`, `last_sync_time`) — not the list. |
+| GET | `/api/v1/shopping_list/items` | The shopping list itself, one entry per merged line. |
+| GET | `/api/v1/stores` | Grocery stores. |
+| GET | `/api/v1/grocery_categories` | Grocery aisles. |
 | GET | `/api/v1/friends` | Friends. |
 | GET | `/api/v1/frozen_recipes` | Freezer: `[{id, recipe_id, count, servings, frozen_on}]`. |
 | DELETE | `/api/v1/frozen_recipes/:id` | Soft-delete (sets `count: 0`; row persists). Returns the updated row. |
