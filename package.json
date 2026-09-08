@@ -1,11 +1,12 @@
 {
   "name": "plan-to-eat-mcp",
-  "version": "0.4.0",
-  "description": "Unofficial Plan to Eat (plantoeat.com) JSON API client and Model Context Protocol server.",
-  "main": "dist/client.js",
-  "types": "dist/client.d.ts",
+  "version": "0.5.0",
+  "description": "Unofficial Plan to Eat (plantoeat.com) JSON API client, CLI, and Model Context Protocol server.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "bin": {
-    "plan-to-eat-mcp": "./dist/server.js"
+    "plan-to-eat": "./dist/cli/main.js",
+    "plan-to-eat-mcp": "./dist/mcp/server.js"
   },
   "files": [
     "dist",
@@ -15,10 +16,12 @@
   "scripts": {
     "build": "tsc",
     "watch": "tsc --watch",
-    "start": "node dist/server.js",
-    "verify": "node dist/verify.js",
-    "verify:planner": "node dist/planner_verify.js",
-    "test": "node dist/test_server.js",
+    "start": "node dist/mcp/server.js",
+    "cli": "node dist/cli/main.js",
+    "verify": "node dist/scripts/verify.js",
+    "verify:planner": "node dist/scripts/planner_verify.js",
+    "check:docs": "node dist/scripts/check_docs.js",
+    "test": "node dist/scripts/test_server.js",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\""
   },
   "keywords": [
@@ -27,7 +30,8 @@
     "mcp",
     "model-context-protocol",
     "recipes",
-    "meal-planner"
+    "meal-planner",
+    "cli"
   ],
   "author": "Alex Zwingli",
   "license": "MIT",

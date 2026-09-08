@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "plan-to-eat",
+  "description": "Plan to Eat (plantoeat.com) integration for Claude Code: an MCP server and CLI for your recipe book, meal planner, freezer, and shopping list.",
+  "owner": {
+    "name": "Alex Zwingli",
+    "url": "https://github.com/alex-zwingli"
+  },
+  "plugins": [
+    {
+      "name": "plan-to-eat",
+      "source": "./",
+      "description": "Read and write your Plan to Eat (plantoeat.com) recipe book, meal planner, freezer, and shopping list — over MCP or the plan-to-eat CLI."
+    }
+  ]
+}

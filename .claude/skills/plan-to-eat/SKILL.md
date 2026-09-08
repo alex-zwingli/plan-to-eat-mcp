@@ -1,6 +1,6 @@
 ---
 name: plan-to-eat
-description: Use when the user wants to interact with Plan to Eat (plantoeat.com) — viewing or updating their meal plan, managing recipes, scheduling notes/ingredients/leftovers on the planner, tracking the freezer, or checking the shopping list. Triggers on phrases like "what's on my meal plan", "plan X for Wednesday dinner", "add a note to Tuesday breakfast", "move dinner to Friday", "freeze leftovers", "what's in the freezer", "what's in my shopping list".
+description: Use when the user wants to interact with Plan to Eat (plantoeat.com) via the connected plan-to-eat MCP server — viewing or updating their meal plan, managing recipes, scheduling notes/ingredients/leftovers on the planner, tracking the freezer, or checking the shopping list. Triggers on phrases like "what's on my meal plan", "plan X for Wednesday dinner", "add a note to Tuesday breakfast", "move dinner to Friday", "freeze leftovers", "what's in the freezer", "what's in my shopping list".
 ---
 
 # plan-to-eat MCP
@@ -9,7 +9,12 @@ This skill teaches you to use the `plan-to-eat` MCP server effectively. The serv
 
 ## Setup check
 
-If the user references Plan to Eat but no `plan-to-eat__*` tools are available, the MCP server isn't wired into this session. Point them to the project README for setup. Don't try to scrape the web app directly.
+If the user references Plan to Eat but no `plan-to-eat__*` tools are available, the MCP server isn't wired into this session.
+
+- If you have a shell and the `plan-to-eat` CLI is installed, use the **`plan-to-eat-cli`** skill instead — same 30 capabilities, driven through subcommands.
+- Otherwise point the user at the project README for setup. Don't try to scrape the web app directly.
+
+Prefer these MCP tools when they're available: no subprocess per call, and structured results without a JSON round-trip.
 
 ## Core concepts
 
@@ -17,11 +22,12 @@ If the user references Plan to Eat but no `plan-to-eat__*` tools are available, 
 
 **Planner event** — a single entry on the calendar. Shape:
 ```
-{ id, date, section, kind, recipe_id?, title?, servings, ... }
+{ id, date, section, kind, recipe_id?, description?, servings, ... }
 ```
 - `kind` is `recipe`, `note`, or `ingredient`
 - `section` is `breakfast`, `lunch`, `dinner`, or `snacks`
 - `date` is `YYYY-MM-DD`
+- note and ingredient text reads back under `description`; `title` is `null` for notes
 
 **Frozen recipe** — a freezer entry tracking N portions of a previously cooked recipe. Shape: `{ id, recipe_id, count, servings, frozen_on }`. `count` is portions remaining; `servings` is per-portion size. The API soft-deletes by zeroing `count` rather than removing the row.
 
