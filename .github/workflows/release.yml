@@ -77,11 +77,35 @@ jobs:
         if: ${{ steps.release.outputs.release_created == 'true' }}
         run: ./mcp-publisher login github-oidc
 
+      # npm accepts a publish before the version is queryable ("your package is
+      # being processed"), and the MCP registry rejects a server.json whose npm
+      # version it cannot yet see. Wait for npm to actually serve it.
+      - name: Wait for npm to serve the new version
+        if: ${{ steps.release.outputs.release_created == 'true' }}
+        run: |
+          VERSION="${{ steps.release.outputs.version }}"
+          for i in $(seq 1 40); do
+            if curl -fsS -o /dev/null "https://registry.npmjs.org/plan-to-eat-mcp/$VERSION"; then
+              echo "npm is serving $VERSION (after $((i * 15))s)"
+              exit 0
+            fi
+            echo "not visible yet; retry $i/40"
+            sleep 15
+          done
+          echo "::error::npm never served $VERSION; the registry entry would be rejected."
+          exit 1
+
       # server.json's version is bumped by release-please via extra-files, so it
       # already matches the version published above -- nothing to patch here.
       - name: Publish to the MCP registry
         if: ${{ steps.release.outputs.release_created == 'true' }}
-        run: ./mcp-publisher publish
+        run: |
+          for i in 1 2 3 4 5; do
+            if ./mcp-publisher publish; then exit 0; fi
+            echo "attempt $i failed; retrying in 20s"
+            sleep 20
+          done
+          exit 1
 
       - name: Summary
         if: ${{ steps.release.outputs.release_created == 'true' }}

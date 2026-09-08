@@ -1,0 +1,38 @@
+# Manual recovery: register the current server.json with the MCP registry.
+#
+# The release job publishes to npm first and the registry second, so a failure
+# in between leaves a version on npm with no registry entry. Re-running Release
+# will not fix that -- release-please sees the release already exists and skips
+# every publish step. This workflow is the way back.
+#
+# It publishes exactly what server.json currently says, so make sure that
+# version is already on npm.
+name: Registry publish
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Verify the version is live on npm
+        run: |
+          VERSION=$(node -p "require('./server.json').version")
+          echo "server.json version: $VERSION"
+          curl -fsS -o /dev/null "https://registry.npmjs.org/plan-to-eat-mcp/$VERSION" \
+            || { echo "::error::plan-to-eat-mcp@$VERSION is not on npm yet."; exit 1; }
+          echo "npm is serving $VERSION."
+
+      - name: Install mcp-publisher
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+
+      - run: ./mcp-publisher login github-oidc
+      - run: ./mcp-publisher publish
