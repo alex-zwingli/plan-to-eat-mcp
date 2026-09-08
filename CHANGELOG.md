@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/alex-zwingli/plan-to-eat-mcp/compare/v0.7.0...v0.7.1) (2026-09-08)
+
+
+### Bug Fixes
+
+* stop interpolating user text into jq filters in the CLI skill ([#10](https://github.com/alex-zwingli/plan-to-eat-mcp/issues/10)) ([61b3c08](https://github.com/alex-zwingli/plan-to-eat-mcp/commit/61b3c088e145b0ca4acf3a7ac52fecbc8bab9914))
+
 ## [0.7.0](https://github.com/alex-zwingli/plan-to-eat-mcp/compare/v0.6.0...v0.7.0) (2026-09-08)
 
 

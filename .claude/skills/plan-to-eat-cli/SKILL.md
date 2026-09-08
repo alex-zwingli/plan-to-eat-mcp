@@ -1,7 +1,7 @@
 ---
 name: plan-to-eat-cli
 description: Use when the user wants to interact with Plan to Eat (plantoeat.com) — meal plan, recipes, planner notes/ingredients/leftovers, freezer, shopping list — and the `plan-to-eat` CLI is available but the plan-to-eat MCP server is NOT connected. Same capabilities as the MCP server, driven through the shell. Triggers on "what's on my meal plan", "plan X for Wednesday dinner", "add a note to Tuesday breakfast", "move dinner to Friday", "freeze leftovers", "what's in the freezer", "what's on my shopping list", "add milk to the shopping list" — when those must be answered with shell commands.
-version: 0.7.0 # x-release-please-version
+version: 0.7.1 # x-release-please-version
 metadata:
   openclaw:
     requires:
@@ -49,7 +49,7 @@ plan-to-eat --version
 1. **Run it without installing.** The CLI ships in the npm package and needs Node 18+:
 
    ```bash
-   npx -y -p plan-to-eat-mcp@0.7.0 plan-to-eat --version # x-release-please-version
+   npx -y -p plan-to-eat-mcp@0.7.1 plan-to-eat --version # x-release-please-version
    ```
 
    Note the `-p`. The package exposes two bins, and the one named `plan-to-eat-mcp` — what plain `npx plan-to-eat-mcp` resolves to — is the **MCP server**, which will sit and wait on stdio. `-p plan-to-eat-mcp plan-to-eat` is what selects the CLI. If this works, prefix every command in this skill the same way.
