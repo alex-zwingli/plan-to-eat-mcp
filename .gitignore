@@ -6,8 +6,7 @@ dist/
 .env
 session.json
 
-# Local-only tooling: deploy target, machine-specific notes, local CC config.
-/deploy.sh
+# Local-only tooling: machine-specific notes, local CC config.
 /.local/
 /.claude/commands/
 /.claude/settings.local.json

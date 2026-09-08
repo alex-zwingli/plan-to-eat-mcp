@@ -4,8 +4,8 @@ import * as path from 'node:path';
 /**
  * Package version, read from package.json at runtime so the MCP server banner,
  * the CLI's `--version`, and the published package can never drift apart.
- * From `dist/core/` the manifest sits two levels up — the same shape the
- * deploy script ships to the remote.
+ * From `dist/core/` the manifest sits two levels up, which is how the
+ * published package is laid out.
  */
 export function packageVersion(): string {
   try {
