@@ -24,7 +24,7 @@ concurrency:
 permissions:
   contents: write # tag + create the GitHub Release
   pull-requests: write # open/update the Release PR
-  id-token: write # mint the OIDC token npm authenticates with
+  id-token: write # OIDC token for both npm and the MCP registry
 
 jobs:
   release:
@@ -64,9 +64,28 @@ jobs:
       - run: npm publish
         if: ${{ steps.release.outputs.release_created == 'true' }}
 
+      # The npm package must exist before the registry entry that points at it.
+      - name: Install mcp-publisher
+        if: ${{ steps.release.outputs.release_created == 'true' }}
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+
+      # Authenticates via the same OIDC token npm used. The io.github.alex-zwingli
+      # namespace is granted because this repo is owned by that GitHub account,
+      # so there is no registry secret to manage.
+      - name: Authenticate to the MCP registry
+        if: ${{ steps.release.outputs.release_created == 'true' }}
+        run: ./mcp-publisher login github-oidc
+
+      # server.json's version is bumped by release-please via extra-files, so it
+      # already matches the version published above -- nothing to patch here.
+      - name: Publish to the MCP registry
+        if: ${{ steps.release.outputs.release_created == 'true' }}
+        run: ./mcp-publisher publish
+
       - name: Summary
         if: ${{ steps.release.outputs.release_created == 'true' }}
         run: |
-          echo "Published \`plan-to-eat-mcp@${{ steps.release.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Published \`plan-to-eat-mcp@${{ steps.release.outputs.version }}\` to npm and the MCP registry" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "Release: ${{ steps.release.outputs.html_url }}" >> "$GITHUB_STEP_SUMMARY"
