@@ -240,6 +240,19 @@ note entries, checking for duplicates before scheduling):
 The plugin install above registers both. Agents on other hosts can read them as
 plain context — point them at the files, or paste one into your system prompt.
 
+Or install just the skills, into any of 18+ agents, with the
+[skills.sh](https://www.skills.sh) CLI:
+
+```bash
+npx skills add alex-zwingli/plan-to-eat-mcp
+```
+
+That copies both `SKILL.md` files into `.agents/skills/` and symlinks them for
+Claude Code, Cursor, Codex, Copilot, Gemini CLI and the rest. Add
+`--skill plan-to-eat-cli` to take only one. Note that this installs the *skills*
+and not the server — each skill's setup section walks the agent through building
+the MCP server or CLI if it isn't already there.
+
 ---
 
 ## ⌨️ Use it from the terminal

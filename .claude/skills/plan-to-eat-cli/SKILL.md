@@ -18,13 +18,33 @@ skill. They avoid a subprocess per call and return structured JSON directly.
 plan-to-eat --version
 ```
 
-- **Command not found** — the CLI isn't installed. It may still be runnable from
-  a clone: `node <repo>/dist/cli/main.js --version`. If neither works, point the
-  user at the project README rather than trying to scrape the web app.
-- **"Missing PLAN_TO_EAT_USERNAME and/or PLAN_TO_EAT_PASSWORD"** — credentials
-  aren't set. They come from the environment or a `.env` in the working
-  directory. Ask the user to set them; never ask them to paste a password into
-  the conversation, and never put credentials in a command you run.
+**Command not found** — the CLI isn't on `PATH`. Work down this list before giving up:
+
+1. **Already cloned?** Look for a build in the repo: `node <repo>/dist/cli/main.js --version`. If `dist/` is missing but the repo is there, the build step was skipped — `npm install && npm run build` in the repo, then retry.
+2. **Not installed at all?** It's a Node 18+ package built from source. **Show the user these commands rather than running them yourself** — the install writes outside the working directory:
+
+   ```bash
+   git clone https://github.com/alex-zwingli/plan-to-eat-mcp.git
+   cd plan-to-eat-mcp
+   npm install
+   npm run build
+   npm link          # optional: puts `plan-to-eat` on PATH
+   ```
+
+   Without `npm link`, invoke it as `node /absolute/path/to/plan-to-eat-mcp/dist/cli/main.js <command>` — everything else in this skill works the same.
+3. **Node missing entirely** (`node --version` fails) — stop and tell the user; don't install a runtime for them.
+
+**"Missing PLAN_TO_EAT_USERNAME and/or PLAN_TO_EAT_PASSWORD"** — credentials aren't set. They come from the environment or a `.env` in the working directory:
+
+| Var | Required | Default |
+|---|---|---|
+| `PLAN_TO_EAT_USERNAME` | yes | — |
+| `PLAN_TO_EAT_PASSWORD` | yes | — |
+| `PLAN_TO_EAT_SESSION_FILE` | no | `~/.plan-to-eat-session.json` |
+
+Ask the user to set them. **Never ask them to paste a password into the conversation, and never put credentials in a command you run** — no `PLAN_TO_EAT_PASSWORD=... plan-to-eat ...` one-liners, they land in shell history and in the transcript.
+
+If none of this works, point the user at the project README rather than trying to scrape the web app.
 
 ## Using it
 
@@ -196,5 +216,5 @@ plan-to-eat delete-planner-event <id> --json
 
 ## Full reference
 
-`docs/TOOLS.md` in the project repo documents every command's arguments, return
+[docs/TOOLS.md](https://github.com/alex-zwingli/plan-to-eat-mcp/blob/main/docs/TOOLS.md) documents every command's arguments, return
 shape, and quirks.

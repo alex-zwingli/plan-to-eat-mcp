@@ -12,7 +12,41 @@ This skill teaches you to use the `plan-to-eat` MCP server effectively. The serv
 If the user references Plan to Eat but no `plan-to-eat__*` tools are available, the MCP server isn't wired into this session.
 
 - If you have a shell and the `plan-to-eat` CLI is installed, use the **`plan-to-eat-cli`** skill instead — same 30 capabilities, driven through subcommands.
-- Otherwise point the user at the project README for setup. Don't try to scrape the web app directly.
+- Otherwise the server isn't installed yet. Offer the setup below. Don't try to scrape the web app instead.
+
+### If it isn't installed
+
+The server is a Node 18+ package built from source. **Show these commands to the user rather than running them yourself** — the install writes outside the working directory, and the credentials must come from the user's own shell, not from you.
+
+```bash
+git clone https://github.com/alex-zwingli/plan-to-eat-mcp.git
+cd plan-to-eat-mcp
+npm install
+npm run build
+```
+
+Then wire it into the host:
+
+```bash
+# Claude Code, whole plugin (MCP server + both skills):
+claude plugin marketplace add /absolute/path/to/plan-to-eat-mcp
+claude plugin install plan-to-eat@plan-to-eat
+
+# or just the MCP server:
+claude mcp add plan-to-eat -- node /absolute/path/to/plan-to-eat-mcp/dist/mcp/server.js
+```
+
+Other hosts (Claude Desktop, Cursor, Windsurf, Cline, Zed) take the same stdio command in their `mcpServers` JSON block. Absolute paths only — hosts don't launch servers from the project directory.
+
+**Credentials** come from two environment variables the host passes through:
+
+| Var | Required | Default |
+|---|---|---|
+| `PLAN_TO_EAT_USERNAME` | yes | — |
+| `PLAN_TO_EAT_PASSWORD` | yes | — |
+| `PLAN_TO_EAT_SESSION_FILE` | no | `~/.plan-to-eat-session.json` |
+
+Ask the user to export them in their shell profile. **Never ask them to paste a password into the conversation, and never put credentials in a command you run.** After installing, the host has to be restarted before the tools appear.
 
 Prefer these MCP tools when they're available: no subprocess per call, and structured results without a JSON round-trip.
 
@@ -129,4 +163,4 @@ delete_planner_event({ id })
 
 ## Full tool reference
 
-See [docs/TOOLS.md](../../../docs/TOOLS.md) for argument schemas, return shapes, and notes on each of the 30 tools.
+See [docs/TOOLS.md](https://github.com/alex-zwingli/plan-to-eat-mcp/blob/main/docs/TOOLS.md) — `docs/TOOLS.md` in a clone — for argument schemas, return shapes, and notes on each of the 30 tools.
