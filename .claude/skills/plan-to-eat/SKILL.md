@@ -1,6 +1,6 @@
 ---
 name: plan-to-eat
-description: Use when the user wants to interact with Plan to Eat (plantoeat.com) via the connected plan-to-eat MCP server — viewing or updating their meal plan, managing recipes, scheduling notes/ingredients/leftovers on the planner, tracking the freezer, or checking the shopping list. Triggers on phrases like "what's on my meal plan", "plan X for Wednesday dinner", "add a note to Tuesday breakfast", "move dinner to Friday", "freeze leftovers", "what's in the freezer", "what's in my shopping list".
+description: Use when the user wants to interact with Plan to Eat (plantoeat.com) via the connected plan-to-eat MCP server — viewing or updating their meal plan, managing recipes, scheduling notes/ingredients/leftovers on the planner, tracking the freezer, or working on the shopping list. Triggers on phrases like "what's on my meal plan", "plan X for Wednesday dinner", "add a note to Tuesday breakfast", "move dinner to Friday", "freeze leftovers", "what's in the freezer", "what's on my shopping list", "add milk to the shopping list", "move that to Costco".
 version: 0.6.0 # x-release-please-version
 metadata:
   openclaw:
@@ -32,7 +32,7 @@ This skill teaches you to use the `plan-to-eat` MCP server effectively. The serv
 
 If the user references Plan to Eat but no `plan-to-eat__*` tools are available, the MCP server isn't wired into this session.
 
-- If you have a shell and the `plan-to-eat` CLI is installed, use the **`plan-to-eat-cli`** skill instead — same 30 capabilities, driven through subcommands.
+- If you have a shell and the `plan-to-eat` CLI is installed, use the **`plan-to-eat-cli`** skill instead — same 36 capabilities, driven through subcommands.
 - Otherwise the server isn't installed yet. Offer the setup below. Don't try to scrape the web app instead.
 
 ### If it isn't installed
@@ -47,7 +47,7 @@ claude mcp add plan-to-eat -- npx -y plan-to-eat-mcp
 #   "command": "npx", "args": ["-y", "plan-to-eat-mcp"]
 ```
 
-No clone or build step. To pin a version, use `plan-to-eat-mcp@0.5.0`; to avoid the per-launch npx resolve, `npm i -g plan-to-eat-mcp` and use the `plan-to-eat-mcp` bin as the command with no args.
+No clone or build step. To pin a version, use `plan-to-eat-mcp@<version>`; to avoid the per-launch npx resolve, `npm i -g plan-to-eat-mcp` and use the `plan-to-eat-mcp` bin as the command with no args.
 
 Claude Code users who want the skills *and* the server together can instead install the plugin from a clone:
 
@@ -84,6 +84,8 @@ Prefer these MCP tools when they're available: no subprocess per call, and struc
 
 **Frozen recipe** — a freezer entry tracking N portions of a previously cooked recipe. Shape: `{ id, recipe_id, count, servings, frozen_on }`. `count` is portions remaining; `servings` is per-portion size. The API soft-deletes by zeroing `count` rather than removing the row.
 
+**Shopping list line** — one row of the list. It has no scalar id: Plan to Eat merges duplicate ingredients (the garlic three planned recipes each need) into one line carrying every underlying row id in an `item_ids` array. That array is the handle for `update_shopping_list_items` and `remove_shopping_list_items` — pass all of it. Each line also names the store it's assigned to (`store_title`, plus `store_id` which is `null` for the account's default store) and the aisle it's filed under (`grocery_category_title`). `recipe_ids` tells you which planned recipes pulled it in — an empty one was added by hand.
+
 **A "week"** is whatever 7-day window the user means. Use `get_planner_week` with a `start_date`; `end_date` defaults to `start_date + 6 days`. If the user says "this week" without specifying a start day, ask or pick today.
 
 ## Common workflows
@@ -108,7 +110,7 @@ add_planner_note({ date: "2026-05-04", section: "breakfast", title: "Defrost chi
 ```
 add_planner_ingredient({ date: "2026-05-06", section: "dinner", title: "2 lbs ground beef" })
 ```
-Use this for grocery-style additions tied to a meal slot. For the actual shopping list, use `get_shopping_list`.
+Use this for grocery-style additions tied to a meal slot. For the actual shopping list, see the shopping list workflows below.
 
 ### "Move Tuesday dinner to Wednesday"
 1. `get_planner_week` to find the event id
@@ -172,6 +174,40 @@ This is a soft-delete: API sets `count` to 0; the entry stays in history.
 delete_planner_event({ id })
 ```
 
+### "What's on the shopping list?"
+```
+get_shopping_list()
+```
+Report it grouped by `store_title` — that's how the user shops. Within a store, `grocery_category_title` is the aisle order. Mention notes (`extra_notes`) when there are any.
+
+### "Add sliced almonds and a jar of tahini to the list"
+```
+add_shopping_list_items({ items: [
+  { title: "Sliced almonds" },
+  { title: "Tahini", amount: "1", unit: "jar" },
+] })
+```
+Don't set `category_id` or `store_id` unless the user asked for a specific store or aisle: left off, Plan to Eat guesses the aisle and reuses the store last chosen for that item, which is nearly always what the user wants. To honor "get it at Trader Joe's", look the id up with `list_stores` first.
+
+### "Move the almonds to Costco" / "put that in the Spices aisle"
+1. `get_shopping_list` → the line's `item_ids`
+2. `list_stores` or `list_grocery_categories` → the id
+3. `update_shopping_list_items({ item_ids, store_id })`
+
+Re-filing takes as many lines as you pass, so batch a "move all of these to Costco" into one call.
+
+### "Make it two jars, and call it hot paprika"
+```
+update_shopping_list_items({ item_ids, title: "Hot paprika", amount: "2" })
+```
+One line at a time — ids spanning two lines are refused. Only pass the fields that change; the rest are preserved. The call returns the line as it now stands, so take fresh `item_ids` from the result if you're going to act on it again.
+
+### "Take the bananas off the list"
+```
+remove_shopping_list_items({ item_ids })
+```
+`restore_shopping_list_items({ item_ids })` undoes it — but nothing can list removed lines, so keep the ids in your reply if the user might want them back.
+
 ## Gotchas
 
 - **`section` can come back as `supper`** — Plan to Eat normalizes to the user's per-account preference. Always send `dinner` on input; recognize `supper` as the same thing on read.
@@ -179,7 +215,10 @@ delete_planner_event({ id })
 - **Don't blindly accept the user's date** — Plan to Eat dates are `YYYY-MM-DD`. If the user says "Tuesday", convert to a real date relative to today.
 - **Recipe events need a real `recipe_id`** — `add_planner_recipe` will not create a new recipe. To plan something not in the book, either `create_recipe` first, or use `add_planner_note` / `add_planner_ingredient` for freeform text.
 - **Don't use `find_planned_dates` to look up recipes by title** — it's keyed on `recipe_id`. For "what recipes do I have", use `list_recipes`.
+- **A shopping list line is `item_ids`, plural** — one line can hold several row ids. Naming any of them affects the whole line, so you don't have to be precise; but don't assume every id you sent still exists afterwards. A text edit consolidates a merged line into one row (keeping the combined quantity), so re-read `item_ids` from the response.
+- **`store_id: null` isn't "no store"** — it's the account's default store, and `store_title` names it. Read the title, not the id.
+- **Removing a shopping list item is invisible afterwards** — the API won't list removed lines, so restoring one needs ids you kept from before.
 
 ## Full tool reference
 
-See [docs/TOOLS.md](https://github.com/alex-zwingli/plan-to-eat-mcp/blob/main/docs/TOOLS.md) — `docs/TOOLS.md` in a clone — for argument schemas, return shapes, and notes on each of the 30 tools.
+See [docs/TOOLS.md](https://github.com/alex-zwingli/plan-to-eat-mcp/blob/main/docs/TOOLS.md) — `docs/TOOLS.md` in a clone — for argument schemas, return shapes, and notes on each of the 36 tools.

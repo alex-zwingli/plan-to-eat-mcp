@@ -1,6 +1,6 @@
 ---
 name: plan-to-eat-cli
-description: Use when the user wants to interact with Plan to Eat (plantoeat.com) — meal plan, recipes, planner notes/ingredients/leftovers, freezer, shopping list — and the `plan-to-eat` CLI is available but the plan-to-eat MCP server is NOT connected. Same capabilities as the MCP server, driven through the shell. Triggers on "what's on my meal plan", "plan X for Wednesday dinner", "add a note to Tuesday breakfast", "move dinner to Friday", "freeze leftovers", "what's in the freezer", "what's in my shopping list" — when those must be answered with shell commands.
+description: Use when the user wants to interact with Plan to Eat (plantoeat.com) — meal plan, recipes, planner notes/ingredients/leftovers, freezer, shopping list — and the `plan-to-eat` CLI is available but the plan-to-eat MCP server is NOT connected. Same capabilities as the MCP server, driven through the shell. Triggers on "what's on my meal plan", "plan X for Wednesday dinner", "add a note to Tuesday breakfast", "move dinner to Friday", "freeze leftovers", "what's in the freezer", "what's on my shopping list", "add milk to the shopping list" — when those must be answered with shell commands.
 version: 0.6.0 # x-release-please-version
 metadata:
   openclaw:
@@ -31,7 +31,7 @@ metadata:
 
 # plan-to-eat CLI
 
-The `plan-to-eat` CLI exposes the same 30 capabilities as the `plan-to-eat` MCP
+The `plan-to-eat` CLI exposes the same 36 capabilities as the `plan-to-eat` MCP
 server, as subcommands. Use this skill when you have a shell but no
 `plan-to-eat__*` tools.
 
@@ -123,6 +123,13 @@ ingredient list. **Recipe IDs are not guessable** — look them up first.
 portions remaining, `servings` is per-portion size. Consuming is a soft-delete:
 the API zeroes `count` and keeps the row.
 
+**Shopping list line** — one row of the list, addressed by an `item_ids`
+*array*, not a scalar id: Plan to Eat merges duplicate ingredients into one line
+that keeps every underlying row id. Pass the whole array to update or remove it.
+A line also names its store (`store_title`; `store_id` is `null` for the
+account's default store) and aisle (`grocery_category_title`), and `recipe_ids`
+says which planned recipes pulled it in.
+
 **A "week"** is whatever 7 days the user means. `get-planner-week <start>` runs
 to `start + 6 days` unless you pass an end date. If the user says "this week"
 without a start day, convert relative to today.
@@ -158,7 +165,7 @@ plan-to-eat add-planner-note "Defrost chicken" 2026-05-04 breakfast --json
 plan-to-eat add-planner-ingredient "2 lbs ground beef" 2026-05-06 dinner --json
 ```
 Use `add-planner-ingredient` for grocery-style text tied to a meal. For the real
-shopping list, use `get-shopping-list`.
+shopping list, see the shopping list workflows below.
 
 ### "Move Tuesday dinner to Wednesday"
 ```bash
@@ -215,6 +222,42 @@ plan-to-eat delete-frozen-recipe <frozen entry id> --json
 Freezer entries carry `recipe_id`, not titles — `get-recipe` each one if the
 user wants names.
 
+### "What's on the shopping list?"
+```bash
+plan-to-eat get-shopping-list
+```
+The table is already sorted by store. For a store-by-store readback:
+```bash
+plan-to-eat get-shopping-list --json | jq -r 'group_by(.store_title)[] | "\(.[0].store_title):", (.[] | "  \(.amount) \(.unit) \(.title)")'
+```
+
+### "Add sliced almonds and a jar of tahini to the list"
+```bash
+plan-to-eat add-shopping-list-items --items '[{"title":"Sliced almonds"},{"title":"Tahini","amount":"1","unit":"jar"}]'
+```
+Leave `category_id` and `store_id` off unless the user named a store or aisle —
+Plan to Eat then guesses the aisle and reuses the store last used for that item.
+To honor "get it at Trader Joe's", resolve the id first with `plan-to-eat
+list-stores` (aisles: `plan-to-eat list-grocery-categories`).
+
+### "Move the almonds to Costco" / "make it two jars"
+```bash
+plan-to-eat get-shopping-list --json | jq '.[] | select(.title|test("almond";"i")) | .item_ids'
+plan-to-eat update-shopping-list-items --item_ids '[511232505]' --store_id 138079
+plan-to-eat update-shopping-list-items --item_ids '[511232505]' --amount 2 --unit jars
+```
+`--store_id` / `--category_id` on their own re-file any number of lines at once;
+editing text (`--title`, `--amount`, `--unit`, `--note`) works on one line and
+is refused if the ids span two. Only pass what changes. A text edit collapses a
+merged line into one row, so read `item_ids` back off the result.
+
+### "Take the bananas off the list"
+```bash
+plan-to-eat remove-shopping-list-items --item_ids '[518771191]'
+```
+Soft delete — `restore-shopping-list-items --item_ids '[...]'` undoes it. Nothing
+lists removed lines, so echo the ids back to the user if they might want them.
+
 ### "Remove that from the plan"
 ```bash
 plan-to-eat delete-planner-event <id> --json
@@ -238,6 +281,15 @@ plan-to-eat delete-planner-event <id> --json
   `create-recipe` first, or use a note/ingredient entry for freeform text.
 - **`find-planned-dates` is keyed on `recipe_id`, not title.** To search by
   name, filter `list-recipes`.
+- **A shopping list line is `item_ids`, plural** — one line can hold several row
+  ids. Naming any one of them affects the whole line, so precision isn't
+  required; but a text edit consolidates a merged line into a single row
+  (keeping the combined quantity), so don't assume every id you sent survives.
+  Re-read `item_ids` from the output.
+- **`store_id: null` isn't "no store"**, it's the account's default store, and
+  `store_title` names it. Report the title, not the id.
+- **Removed shopping list lines vanish.** Nothing can list them, so
+  `restore-shopping-list-items` only works with ids you kept from before.
 - **Writes are real and immediate.** There's no dry-run and no undo. Confirm
   with the user before deleting anything you didn't just create.
 
