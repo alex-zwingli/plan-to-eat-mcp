@@ -1,7 +1,7 @@
 ---
 name: plan-to-eat
 description: Use when the user wants to interact with Plan to Eat (plantoeat.com) via the connected plan-to-eat MCP server — viewing or updating their meal plan, managing recipes, scheduling notes/ingredients/leftovers on the planner, tracking the freezer, or checking the shopping list. Triggers on phrases like "what's on my meal plan", "plan X for Wednesday dinner", "add a note to Tuesday breakfast", "move dinner to Friday", "freeze leftovers", "what's in the freezer", "what's in my shopping list".
-version: 0.5.0 # x-release-please-version
+version: 0.6.0 # x-release-please-version
 metadata:
   openclaw:
     requires:
