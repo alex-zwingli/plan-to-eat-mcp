@@ -23,9 +23,10 @@ PLAN_TO_EAT_PASSWORD=hunter2
 
 ## ⚠️ Tests run against your real account
 
-There is no test fixture, no mock server, and no sandbox — Plan to Eat doesn't
-offer one. `npm test`, `npm run verify`, and `npm run verify:planner` log into
-whatever account `.env` points at and create real data.
+Plan to Eat has no sandbox. `npm test`, `npm run verify`, and
+`npm run verify:planner` log into whatever account `.env` points at and create
+real data. The one exception is `npm run test:unit`: it stubs `fetch` and runs
+offline, so it's what CI runs and what new logic should be covered by first.
 
 They clean up after themselves (create → assert → delete), and the planner
 script works on a date six months out to stay clear of anything you actually
@@ -40,6 +41,7 @@ maintainer's account is a fine substitute for you running them.
 |---|---|
 | `npm run build` | Nothing. Always run this first — the scripts run compiled JS. |
 | `npm run check:docs` | Nothing. Registry ↔ `docs/TOOLS.md` coverage. |
+| `npm run test:unit` | Nothing. `node:test` suites in `src/tests/` against a stubbed `fetch`. |
 | `npm run verify` | Creates + deletes one recipe. |
 | `npm run verify:planner` | Creates + deletes planner entries ~6 months out. |
 | `npm test` | Spawns the MCP server; creates + deletes one recipe through it. |

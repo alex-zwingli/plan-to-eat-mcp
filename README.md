@@ -347,7 +347,7 @@ schemas and return shapes: **[docs/TOOLS.md](./docs/TOOLS.md)**.
 
 | Tool | What it does |
 |---|---|
-| `list_recipes` | Your whole recipe book (caps at ~500 entries). |
+| `list_recipes` | Your whole recipe book, optionally filtered by title words (`search`), `course`, or `owned_only`. Brief rows (id, title, course, tags, …; `full` for every field) — no ingredients. |
 | `get_recipe` | One recipe with directions, ingredients, tags, prep_notes, comments. |
 | `create_recipe` | Create. Only `title` is required. |
 | `update_recipe` | Patch any subset of fields. |
@@ -419,8 +419,9 @@ const pte = new PlanToEat();
 await pte.login(process.env.PLAN_TO_EAT_USERNAME!, process.env.PLAN_TO_EAT_PASSWORD!);
 // Or restore: pte.importSession(JSON.parse(fs.readFileSync('session.json', 'utf8')));
 
-const recipes = await pte.listRecipes();
-const detail: Recipe = await pte.getRecipe(recipes[0].id);
+const recipes = await pte.listRecipes();                    // every active recipe
+const [dumplings] = await pte.listRecipes({ search: 'pork chive' });
+const detail: Recipe = await pte.getRecipe(dumplings.id);  // ingredients + directions
 
 const created = await pte.createRecipe({
   title: 'Grilled cheese',
@@ -464,7 +465,8 @@ All paths under `https://app.plantoeat.com`.
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/api/v1/recipes` | Whole recipe book. Caps at 500 entries; pagination params don't seem to work. |
+| GET | `/api/v1/recipes/lite_plus` | The **whole** recipe book as one array of light listings (title, course/cuisine/main-ingredient titles, tags, flags; no ingredients). What the web app's recipe grid uses. Includes inactive/removed/hidden rows — filter on `active`, `remove`, `hidden`. Ignores paging params, but doesn't need them. `?ids[]=1&ids[]=2` is how the web app refreshes specific cards. |
+| GET | `/api/v1/recipes` | **Don't use for listing.** Returns only the oldest 500 recipes by id, with ingredients embedded. Ignores every paging/sorting param tried: `page`, `per_page`, `offset`, `limit`, `start`, `after_id`, `page[number]`, `sort`, `order`, `q`, `search`. `/api/v1/recipes/search`, `/api/v1/recipes/count` and `/api/v2/recipes` are 404; `/recipes.json` is 406. |
 | GET | `/api/v1/recipes/:id` | Single recipe with `directions`, `ingredients`, `tags`, `prep_notes`, `comments`. |
 | POST | `/api/v1/recipes` | Create. Body: `{ "recipe": {...} }`. Returns 201 + full recipe. |
 | PUT | `/api/v1/recipes/:id` | Update. Same body shape. |
@@ -559,6 +561,7 @@ src/
     args.ts       argv -> Zod-validated arguments
     render.ts     results -> tables (or raw JSON under --json)
   scripts/        smoke tests and the docs coverage check
+  tests/          offline unit tests (fetch is stubbed)
   index.ts        public entrypoint for library consumers
   server.ts       back-compat shim, see below
 ```
@@ -599,9 +602,10 @@ MCP SDK, and Zod.
 | `npm run verify:planner` | Smoke-test the planner write endpoints (creates + cleans up test events on a date 6 months out). |
 | `npm test` | Smoke-test the MCP server end-to-end (spawns it and calls tools). |
 | `npm run check:docs` | Check `docs/TOOLS.md` covers exactly the registered tools. |
+| `npm run test:unit` | Offline unit tests with `fetch` stubbed. Touches nothing; CI runs these. |
 | `npm run clean` | Remove `dist/`. |
 
-The `verify*` and `test` scripts hit your real account. They create and delete
+The `verify*` and `test` scripts hit your real account (`test:unit` doesn't). They create and delete
 their own test data, but they are not a dry run — see
 [CONTRIBUTING.md](./CONTRIBUTING.md).
 

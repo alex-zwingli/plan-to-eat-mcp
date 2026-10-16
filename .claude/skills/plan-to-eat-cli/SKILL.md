@@ -118,9 +118,28 @@ expected type.
 
 ## Core concepts
 
-**Recipe** — numeric `id`. `list-recipes --json` returns the catalog (~500
-summaries); `get-recipe <id> --json` gives directions, comments, and the full
-ingredient list. **Recipe IDs are not guessable** — look them up first.
+**Recipe** — numeric `id`. `list-recipes --json` returns the **whole** catalog
+(every active recipe — well over a thousand on a big account, so narrow it with
+the flags below rather than reading it all; unfiltered it's ~200 KB of JSON).
+Each row is brief: always `id`, `title` and `owned`, plus whichever of
+`course_title`, `cuisine_title`, `main_ingredient_title`, `tag_titles` (a
+comma-separated string), `total_time` (minutes) and `rating` are set — **a
+missing field means it's empty**, so in jq use `(.rating // "")`, not
+`.rating`. `--full` adds the rest (`photo_url`, timestamps, `saved` /
+`queued`, `stats_total_events`, …) at several times the size. Rows carry **no** ingredients,
+directions, description, servings or nutrition — `get-recipe <id> --json` has
+those, for any id. **Recipe IDs are not guessable** — look them up first.
+
+`list-recipes` filters, all optional and combinable:
+
+| Flag | Matches |
+|---|---|
+| `--search '<words>'` | Every word appears in the title, any order, case-insensitive. `'pork chive'` finds "Juicy Pork & Chive Pan-Fried Dumplings". |
+| `--course '<name>'` | `course_title`, case-insensitive but exact — `Breakfast`, not `Break`. `list-courses` has the names. |
+| `--owned_only` | Only the user's own recipes, not saved/queued friend recipes. |
+| `--full` | Not a filter: return every field instead of brief rows. |
+
+Inactive, removed and hidden recipes are never listed.
 
 **Planner event** — one calendar entry: `{ id, date, section, kind, recipe_id?, description?, servings }`.
 `kind` is `recipe`, `note`, or `ingredient`. `section` is `breakfast`, `lunch`,
@@ -143,22 +162,37 @@ without a start day, convert relative to today.
 
 ## Common workflows
 
-Resolving a recipe by name is the usual first step. Filter the catalog rather
-than eyeballing it:
+Resolving a recipe by name is the usual first step. Let `--search` do the
+filtering rather than eyeballing the catalog:
 
 ```bash
-plan-to-eat list-recipes --json \
-  | jq -r --arg q 'lasagna' '.[] | select(.title|ascii_downcase|contains($q|ascii_downcase)) | "\(.id)\t\(.title)"'
+plan-to-eat list-recipes --search 'lasagna' --json \
+  | jq -r '.[] | "\(.id)\t\(.title)"'
 ```
 
 If `jq` isn't available, pipe to `node -e` or read the JSON yourself.
 
-**Pass the search term with `--arg`, never inside the filter.** `--arg` hands
-jq the value as data, so a title with regex characters or an apostrophe is
-matched literally instead of reparsed. Interpolating it into `test("...")`
-silently matches the wrong thing — searching `Chicken (Spicy)` as a regex finds
-"Chicken Spicy Wings" and misses the recipe you meant — and a title like
-`Mom's Chili` breaks out of the shell quoting entirely.
+Use the distinctive words from what the user said, not the whole phrase —
+`--search 'pork chive'` finds "Juicy Pork & Chive Pan-Fried Dumplings", where a
+literal "pork and chive dumplings" wouldn't. No match? Drop a word and retry
+before concluding the recipe isn't in the book. Several matches? Show the user
+the titles and ask.
+
+**Pass the search term as its own quoted argument**, never spliced into a
+larger command string. The CLI treats it as plain text — no regex, no
+wildcards — so `--search "Mom's Chili"` and `--search 'Chicken (Spicy)'` match
+literally.
+
+### "What [breakfast / dessert / soup] recipes do we have?"
+```bash
+plan-to-eat list-courses --json                        # the exact course names
+plan-to-eat list-recipes --course 'Breakfast' --json
+plan-to-eat list-recipes --course 'Breakfast' --owned_only --json   # just ours
+```
+`--course` wants the course's full name. If the user's word isn't one
+(`list-courses` has, say, "Desserts" but not "dessert"), use the closest
+course rather than `--search`, which only looks at titles. "Recipes we made
+ourselves" / "not the ones from friends" means `--owned_only`.
 
 ### "What's on the meal plan this week?"
 ```bash
@@ -300,8 +334,11 @@ plan-to-eat delete-planner-event <id> --json
   so `2026-13-99` passes argument parsing and fails upstream.
 - **`add-planner-recipe` won't create a recipe.** For something not in the book,
   `create-recipe` first, or use a note/ingredient entry for freeform text.
-- **`find-planned-dates` is keyed on `recipe_id`, not title.** To search by
-  name, filter `list-recipes`.
+- **`find-planned-dates` is keyed on `recipe_id`, not title.** To go by name,
+  resolve the id first with `list-recipes --search '<words>'`.
+- **`list-recipes` rows have no ingredients.** To answer "what can I make with
+  chicken thighs", narrow with `--search` / `--course` first, then
+  `get-recipe` the candidates — don't `get-recipe` the whole book.
 - **A shopping list line is `item_ids`, plural** — one line can hold several row
   ids. Naming any one of them affects the whole line, so precision isn't
   required; but a text edit consolidates a merged line into a single row

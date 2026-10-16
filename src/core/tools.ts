@@ -5,7 +5,7 @@
 
 import { z } from 'zod';
 import type {
-  PlanToEat, PlannerSection, RecipeWritable, ShoppingListItemInput,
+  PlanToEat, PlannerSection, RecipeListing, RecipeWritable, ShoppingListItemInput,
 } from './client.js';
 
 export type ToolGroup =
@@ -111,6 +111,30 @@ const SHOPPING_COLUMNS = [
   'extra_notes', 'recipe_ids',
 ];
 
+// list_recipes returns the whole book — 1,300 rows on a big account — and the
+// full listing is ~240k tokens of JSON, past what MCP hosts will pass to a
+// model in one result. These fields are what an agent picks a recipe by; the
+// rest (photo_url, timestamps, the *_id twins of the *_title fields, flags
+// that are almost always false) waits behind `full: true`. Empty values are
+// dropped too: most recipes have no cuisine, main ingredient, rating or tags,
+// and spelling that out per row was half the remaining size.
+const RECIPE_BRIEF_FIELDS = [
+  'id', 'title', 'course_title', 'cuisine_title', 'main_ingredient_title',
+  'tag_titles', 'total_time', 'rating', 'owned',
+] as const;
+
+function briefRecipe(r: RecipeListing): Partial<RecipeListing> {
+  const out: Record<string, unknown> = {};
+  for (const k of RECIPE_BRIEF_FIELDS) {
+    const v = r[k];
+    const always = k === 'id' || k === 'title' || k === 'owned';
+    // total_time 0 is how Plan to Eat spells "not set".
+    if (!always && (v === null || v === undefined || v === '' || (k === 'total_time' && v === 0))) continue;
+    out[k] = v;
+  }
+  return out as Partial<RecipeListing>;
+}
+
 const sectionSchema = z.enum(['breakfast', 'lunch', 'dinner', 'snacks']);
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD');
 
@@ -125,10 +149,22 @@ export const tools: ToolDef[] = [
   defineTool({
     name: 'list_recipes',
     group: 'recipes',
-    description: "List the user's recipe book (own + saved + queued + friend recipes). Caps at ~500 entries.",
-    input: {},
+    description: "List the user's whole recipe book (own + saved + queued + friend recipes), optionally filtered by title words, course, or ownership. Narrow with a filter when you can: the unfiltered book can run to well over a thousand rows. Each row has id, title, owned, and whichever of course_title, cuisine_title, main_ingredient_title, tag_titles, total_time (minutes) and rating are set — empty ones are left out. Rows carry no ingredients, directions, description, servings or nutrition — call get_recipe on an id for those. Inactive, removed and hidden recipes are left out.",
+    input: {
+      search: z.string().optional()
+        .describe('Words to find in the title, case-insensitive; every word must appear, in any order. "pork chive" matches "Juicy Pork & Chive Dumplings".'),
+      course: z.string().optional()
+        .describe('Course title, case-insensitive exact match, e.g. "Breakfast". list_courses has the names.'),
+      owned_only: z.boolean().optional()
+        .describe("Only the user's own recipes, not saved or queued ones from friends."),
+      full: z.boolean().optional()
+        .describe('Return every listing field (photo_url, created_at/updated_at, course_id etc., saved/queued/planned_only, stats_total_events), empty ones included. Several times larger; filter first.'),
+    },
     columns: ['id', 'title', 'course_title', 'cuisine_title', 'total_time', 'rating'],
-    run: (pte) => pte.listRecipes(),
+    run: async (pte, { full, ...filters }) => {
+      const rows = await pte.listRecipes(filters);
+      return full ? rows : rows.map(briefRecipe);
+    },
   }),
   defineTool({
     name: 'get_recipe',
