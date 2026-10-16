@@ -15,11 +15,29 @@ Every tool exposed by the `plan-to-eat-mcp` server. Inputs use the JSON-Schema s
 ## Recipes
 
 ### `list_recipes`
-List the user's recipe book (own + saved + queued + friend recipes). Capped at ~500 entries by the upstream API; pagination params don't work.
+List the user's whole recipe book (own + saved + queued + friend recipes), optionally filtered.
 
-- **Input**: none
-- **Returns**: `RecipeSummary[]` — id, title, course/cuisine titles, tag titles, total time, ingredient titles (no directions)
-- **Notes**: Use this as the catalog. For full recipe content, follow up with `get_recipe`.
+- **Input**: `{ search?: string, course?: string, owned_only?: boolean, full?: boolean }` — all optional; with none, every active recipe comes back.
+  - `search` — case-insensitive; every whitespace-separated word must appear somewhere in the title, in any order. `"pork chive"` matches "Juicy Pork & Chive Pan-Fried Dumplings".
+  - `course` — case-insensitive **exact** match on `course_title` (`"breakfast"` matches "Breakfast", not "Breakfast Sides"). `list_courses` has the names.
+  - `owned_only` — only the user's own recipes, dropping saved/queued friend recipes.
+  - `full` — return complete rows (below) instead of brief ones.
+  - Filters combine with AND.
+- **Returns**: an array of brief rows by default:
+  - always `id`, `title`, `owned`
+  - and whichever of `course_title`, `cuisine_title`, `main_ingredient_title`, `tag_titles` (comma-separated string), `total_time` (minutes) and `rating` are set. **Empty fields are omitted**, not sent as `null` / `""` / `0` — most recipes have no cuisine, main ingredient, rating or tags.
+
+  With `full: true`, `RecipeListing[]` — every field `lite_plus` returns, empties included:
+  - `id`, `user_id`, `title`
+  - `course_id` / `course_title`, `cuisine_id` / `cuisine_title`, `main_ingredient_id` / `main_ingredient_title`
+  - `tag_titles`, `total_time`, `rating`, `photo_url`
+  - `owned`, `saved`, `queued`, `planned_only`, `stats_total_events`
+  - `active`, `remove`, `hidden`, `created_at`, `updated_at`
+- **Notes**:
+  - **Size.** On a ~1,300-recipe book the unfiltered brief list is ~200 KB (~50k tokens) and the `full` one ~950 KB (~240k tokens) — past the 25k-token / 50k-character limit Claude Code passes to the model inline (it saves larger results to a file instead), and other MCP hosts may simply truncate. Filter first; a single course is typically a few thousand tokens.
+  - Listings have **no** `description`, `source`, `url`, `servings`, `ingredients` / `ingredient_titles`, `directions`, nutrition, or `prep_time` / `cook_time`. Call `get_recipe` on an id for those — it works on every id this returns.
+  - Inactive, removed and hidden recipes (`active: false`, `remove: true`, or `hidden: true`) are left out.
+  - Backed by `/api/v1/recipes/lite_plus`, which returns the whole book in one response. Before 0.8.0 this tool used `/api/v1/recipes`, which silently stops at the oldest 500 recipes and can't be paged.
 
 ### `get_recipe`
 Get a single recipe with full detail.
@@ -92,7 +110,7 @@ Fetch planner events in a date range, with recipe titles enriched.
 
 - **Input**: `{ start_date: "YYYY-MM-DD", end_date?: "YYYY-MM-DD" }`. `end_date` defaults to `start_date + 6 days`.
 - **Returns**: `{ start_date, end_date, events: PlannerEvent[] }` — events sorted by date, then position, with `recipe_title` added on recipe events
-- **Notes**: This is the right tool for "what's on my plan this week". Implementation filters `list_planner_events` and joins against `list_recipes` client-side.
+- **Notes**: This is the right tool for "what's on my plan this week". Implementation filters `list_planner_events` and joins titles from the full recipe catalog client-side — including recipes removed or hidden since they were planned, which `list_recipes` leaves out.
 
 ---
 

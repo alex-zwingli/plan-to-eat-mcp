@@ -62,6 +62,47 @@ export interface RecipeSummary {
   [key: string]: unknown;
 }
 
+/**
+ * One row of `/api/v1/recipes/lite_plus` — the catalog listing. Lighter than
+ * `RecipeSummary`: no description, source, servings, ingredients, nutrition or
+ * prep/cook times. `getRecipe()` has all of those, for any id listed here.
+ */
+export interface RecipeListing {
+  id: number;
+  user_id: number;
+  title: string;
+  course_id: number | null;
+  cuisine_id: number | null;
+  main_ingredient_id: number | null;
+  active: boolean;
+  remove: boolean;
+  total_time: number | null;
+  tag_titles: string;
+  stats_total_events: number;
+  photo_url: string | null;
+  rating: string | number | null;
+  owned: boolean;
+  queued: boolean;
+  saved: boolean;
+  hidden: boolean;
+  planned_only: boolean;
+  updated_at: string;
+  created_at: string;
+  course_title: string | null;
+  cuisine_title: string | null;
+  main_ingredient_title: string | null;
+  [key: string]: unknown;
+}
+
+export interface RecipeFilters {
+  /** Case-insensitive; every whitespace-separated word must appear in the title. */
+  search?: string;
+  /** Case-insensitive exact match on `course_title`. */
+  course?: string;
+  /** Only recipes the user owns (not saved/queued friend recipes). */
+  owned_only?: boolean;
+}
+
 export interface Recipe extends RecipeSummary {
   ingredients: Ingredient[];
   directions: string | null;
@@ -431,12 +472,38 @@ export class PlanToEat {
   // ---- recipes ----
 
   /**
-   * List the user's recipe book. Returns up to ~500 entries (the cap on
-   * `/api/v1/recipes` — pagination params don't seem to work). Each entry is a
-   * "summary" recipe with ingredients embedded but not directions.
+   * Every row of the recipe book, including inactive/removed/hidden ones.
+   *
+   * This is `/api/v1/recipes/lite_plus`, the endpoint the web app's own recipe
+   * grid uses. Don't swap it for `/api/v1/recipes`: that one returns only the
+   * oldest 500 recipes by id and ignores every paging and sorting param tried
+   * (page, per_page, offset, limit, start, after_id, page[number], sort,
+   * order, q, search). lite_plus ignores them too, but returns the whole book
+   * in one array, so it doesn't need them.
    */
-  listRecipes(): Promise<RecipeSummary[]> {
-    return this.json<RecipeSummary[]>('GET', '/api/v1/recipes');
+  private rawRecipeListings(): Promise<RecipeListing[]> {
+    return this.json<RecipeListing[]>('GET', '/api/v1/recipes/lite_plus');
+  }
+
+  /**
+   * List the user's whole recipe book (own + saved + queued + friend recipes),
+   * skipping inactive, removed and hidden rows. Rows are listings — titles,
+   * course/cuisine, tags, flags — without ingredients or directions; follow up
+   * with `getRecipe()` for those.
+   */
+  async listRecipes(filters: RecipeFilters = {}): Promise<RecipeListing[]> {
+    const words = (filters.search ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+    const course = filters.course?.trim().toLowerCase();
+    return (await this.rawRecipeListings()).filter((r) => {
+      if (r.active === false || r.remove || r.hidden) return false;
+      if (filters.owned_only && !r.owned) return false;
+      if (course && (r.course_title ?? '').trim().toLowerCase() !== course) return false;
+      if (words.length) {
+        const title = (r.title ?? '').toLowerCase();
+        if (!words.every((w) => title.includes(w))) return false;
+      }
+      return true;
+    });
   }
 
   /** Full recipe with directions, prep_notes, comments, tags, etc. */
@@ -975,7 +1042,9 @@ export class PlanToEat {
       filtered.map((e) => e.recipe_id).filter((x): x is number => x !== null && x !== undefined),
     );
     if (recipeIds.size > 0) {
-      const recipes = await this.listRecipes();
+      // Unfiltered on purpose: a recipe removed or hidden since it was planned
+      // is still on the calendar and still deserves its title.
+      const recipes = await this.rawRecipeListings();
       const titleById = new Map(recipes.map((r) => [r.id, r.title]));
       for (const e of filtered) {
         if (e.recipe_id !== null && titleById.has(e.recipe_id)) {

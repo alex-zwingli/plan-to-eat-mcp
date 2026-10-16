@@ -57,8 +57,11 @@ jobs:
         if: ${{ steps.release.outputs.release_created == 'true' }}
 
       # `npm test` needs live Plan to Eat credentials, so the release gate is
-      # the offline docs/registry drift check instead.
+      # the offline docs/registry drift check and the fetch-stubbed unit tests.
       - run: npm run check:docs
+        if: ${{ steps.release.outputs.release_created == 'true' }}
+
+      - run: npm run test:unit
         if: ${{ steps.release.outputs.release_created == 'true' }}
 
       - run: npm publish

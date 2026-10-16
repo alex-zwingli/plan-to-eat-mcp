@@ -85,7 +85,12 @@ Ask the user to export them in their shell profile. **Never ask them to paste a 
 Prefer these MCP tools when they're available: no subprocess per call, and structured results without a JSON round-trip.
 ## Core concepts
 
-**Recipe** — identified by numeric `id`. Fetch the catalog with `list_recipes` (returns ~500 entries with summaries); drill into one with `get_recipe` for directions/comments/full ingredient list. **Recipe IDs are not guessable** — always look them up before referencing.
+**Recipe** — identified by numeric `id`. `list_recipes` returns the **whole** catalog — every active recipe, which can be well over a thousand — so narrow it with its optional filters rather than reading it all:
+- `search` — every word must appear in the title, any order, case-insensitive. `"pork chive"` finds "Juicy Pork & Chive Pan-Fried Dumplings".
+- `course` — `course_title`, case-insensitive but exact (`"Breakfast"`, not `"Break"`). `list_courses` has the names.
+- `owned_only: true` — only the user's own recipes, not saved/queued friend recipes.
+
+Each row is brief: always `id`, `title` and `owned`, plus whichever of `course_title`, `cuisine_title`, `main_ingredient_title`, `tag_titles` (comma-separated string), `total_time` (minutes) and `rating` are set — **a missing field means it's empty**, not unknown. `full: true` adds the rest (`photo_url`, timestamps, `saved` / `queued`, `stats_total_events`, …) at several times the size; you rarely need it. The unfiltered list is ~50k tokens on a big book, so filter first. Rows carry **no** ingredients, directions, description, servings or nutrition — `get_recipe` has those, for any id. Inactive, removed and hidden recipes are never listed. **Recipe IDs are not guessable** — always look them up before referencing.
 
 **Planner event** — a single entry on the calendar. Shape:
 ```
@@ -111,7 +116,7 @@ get_planner_week({ start_date: "2026-05-04" })
 Recipe events come pre-enriched with `recipe_title` — you don't need to join against `list_recipes`. Group the response by `date` then `section` for a readable answer.
 
 ### "Plan [recipe] for Wednesday dinner"
-1. `list_recipes` → filter client-side to find the recipe id by title (case-insensitive match)
+1. `list_recipes({ search: "<distinctive words>" })` → the recipe id. Use the telling words, not the user's whole phrase: `"pork chive"`, not `"pork and chive dumplings"`. No match? Drop a word and retry. Several? Ask which.
 2. `add_planner_recipe({ recipe_id, date, section: "dinner" })`
 3. If the user mentioned servings: follow up with `set_planner_servings({ event_id, servings })` using the id returned from step 2
 
@@ -141,8 +146,16 @@ update_planner_entry_text({ id, description: "X" })
 **Note**: this tool uses `description` on the wire, even though `add_planner_note` uses `title` on create. Rails inconsistency — just remember it.
 
 ### "Is [recipe] already on the plan this week?"
-1. `list_recipes` → resolve recipe id
+1. `list_recipes({ search })` → resolve recipe id
 2. `find_planned_dates({ recipe_id, start_date, end_date })`
+
+### "What [breakfast / dessert / soup] recipes do we have?"
+```
+list_courses()                                         // the exact course names
+list_recipes({ course: "Breakfast" })
+list_recipes({ course: "Breakfast", owned_only: true })   // just ours
+```
+`course` wants the course's full name — if the user's word isn't one (`list_courses` has "Desserts", not "dessert"), use the closest course rather than `search`, which only looks at titles. "Recipes we made ourselves" / "not the ones from friends" means `owned_only: true`.
 
 ### "Duplicate Tuesday's dinner to Friday"
 ```
@@ -228,7 +241,8 @@ remove_shopping_list_items({ item_ids })
 - **Create/duplicate may return `null`** — under the hood the API returns empty bodies, so the MCP recovers the new event by diffing `list_planner_events` before/after. If a concurrent change happens, the diff can miss. Re-list to find the new event.
 - **Don't blindly accept the user's date** — Plan to Eat dates are `YYYY-MM-DD`. If the user says "Tuesday", convert to a real date relative to today.
 - **Recipe events need a real `recipe_id`** — `add_planner_recipe` will not create a new recipe. To plan something not in the book, either `create_recipe` first, or use `add_planner_note` / `add_planner_ingredient` for freeform text.
-- **Don't use `find_planned_dates` to look up recipes by title** — it's keyed on `recipe_id`. For "what recipes do I have", use `list_recipes`.
+- **Don't use `find_planned_dates` to look up recipes by title** — it's keyed on `recipe_id`. For "what recipes do I have", use `list_recipes` with `search` / `course`.
+- **`list_recipes` rows have no ingredients** — to answer "what can I make with chicken thighs", narrow with `search` / `course` first, then `get_recipe` the candidates. Don't `get_recipe` the whole book.
 - **A shopping list line is `item_ids`, plural** — one line can hold several row ids. Naming any of them affects the whole line, so you don't have to be precise; but don't assume every id you sent still exists afterwards. A text edit consolidates a merged line into one row (keeping the combined quantity), so re-read `item_ids` from the response.
 - **`store_id: null` isn't "no store"** — it's the account's default store, and `store_title` names it. Read the title, not the id.
 - **Removing a shopping list item is invisible afterwards** — the API won't list removed lines, so restoring one needs ids you kept from before.
