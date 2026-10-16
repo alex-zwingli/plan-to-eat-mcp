@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.8.0](https://github.com/alex-zwingli/plan-to-eat-mcp/compare/v0.7.3...v0.8.0) (2026-10-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* list_recipes returns brief rows (id, title, owned, and the course/cuisine/main-ingredient titles, tag_titles, total_time and rating when set; empty fields omitted) instead of RecipeSummary rows. PlanToEat.listRecipes() and list_recipes with full: true return RecipeListing rows from /api/v1/recipes/lite_plus. Neither has description, source, url, servings, yield, ingredient_titles, nutrition, prep_time, cook_time or user_login; call get_recipe for those. Inactive, removed and hidden recipes are no longer returned.
+
+### Bug Fixes
+
+* list every recipe, not just the oldest 500 ([#16](https://github.com/alex-zwingli/plan-to-eat-mcp/issues/16)) ([66ef11f](https://github.com/alex-zwingli/plan-to-eat-mcp/commit/66ef11f45617b7be3c2099b21c535984a8387b9d))
+
 ## [0.7.3](https://github.com/alex-zwingli/plan-to-eat-mcp/compare/v0.7.2...v0.7.3) (2026-09-08)
 
 
