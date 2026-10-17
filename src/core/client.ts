@@ -286,6 +286,17 @@ export class HttpError extends Error {
   }
 }
 
+/**
+ * Name of the blank spam-trap input on the login form, or ''.
+ *
+ * The live form uses a short hyphenated name that equals its id
+ * (for example `lkp-nmqavihfc`). A `\w{16,}` match misses the hyphen and the length,
+ * so the field was never submitted.
+ */
+export function loginHoneypotName(html: string): string {
+  return html.match(/<input type="text" name="([^"]+)" id="\1"/)?.[1] ?? '';
+}
+
 export class PlanToEat {
   private cookies: Record<string, string> = {};
   private csrf: string | null = null;
@@ -433,7 +444,7 @@ export class PlanToEat {
     const html = await loginPage.text();
     const csrf = html.match(/<meta name="csrf-token" content="([^"]+)"/)?.[1];
     if (!csrf) throw new Error('Could not find csrf-token on /login');
-    const honeypot = html.match(/<input type="text" name="(\w{16,})" id="\1"/)?.[1] ?? '';
+    const honeypot = loginHoneypotName(html);
 
     const form = new URLSearchParams();
     form.set('authenticity_token', csrf);
