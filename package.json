@@ -26,7 +26,7 @@
     "verify:planner": "node dist/scripts/planner_verify.js",
     "check:docs": "node dist/scripts/check_docs.js",
     "test": "node dist/scripts/test_server.js",
-    "test:unit": "node --test dist/tests/recipes.test.js",
+    "test:unit": "node --test dist/tests/recipes.test.js dist/tests/login.test.js",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\""
   },
   "keywords": [
